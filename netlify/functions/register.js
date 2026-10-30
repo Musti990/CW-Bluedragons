@@ -68,34 +68,17 @@ exports.handler = async () => {
       description: 'Startet eine Session: prüft alle 2 Minuten auf neue Spiele und postet die Statistiken',
       options: [
         {
-          name: 'team',
-          description: 'Welches Team? (leer = beide)',
+          name: 'club',
+          description: 'Clubnamen eintippen und aus der Liste wählen',
           type: 3,
-          required: false,
-          choices: [
-            { name: 'Blue Dragons 1', value: '1' },
-            { name: 'Blue Dragons 2', value: '2' },
-            { name: 'Beide', value: 'beide' },
-          ],
+          required: true,
+          autocomplete: true,
         },
       ],
     },
     {
       name: 'sessionend',
-      description: 'Beendet die Session und postet die Bilanz (Spieler nach Ø-Rating sortiert)',
-      options: [
-        {
-          name: 'team',
-          description: 'Welches Team? (leer = beide)',
-          type: 3,
-          required: false,
-          choices: [
-            { name: 'Blue Dragons 1', value: '1' },
-            { name: 'Blue Dragons 2', value: '2' },
-            { name: 'Beide', value: 'beide' },
-          ],
-        },
-      ],
+      description: 'Beendet alle laufenden Sessions und postet die Bilanz (Spieler nach Ø-Rating)',
     },
     {
       name: 'aufstellung',

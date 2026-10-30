@@ -42,9 +42,12 @@ exports.handler = async () => {
   const results = [];
   let budget = MAX_MATCHES_PER_RUN;
 
-  for (const club of CLUBS) {
-    const session = await getSession(sessions, club.clubId);
-    if (!session) continue; // keine Session -> nichts zu tun
+  // Alle laufenden Sessions (der Club kommt aus /session club:…)
+  const { blobs: sessionKeys } = await sessions.list({ prefix: 'session-' });
+  for (const { key } of sessionKeys) {
+    const session = await sessions.get(key, { type: 'json' });
+    if (!session) continue;
+    const club = { clubId: String(session.clubId), label: session.label, team: '' };
 
     const now = Date.now();
     let pending = false;

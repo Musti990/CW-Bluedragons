@@ -7,7 +7,7 @@ const {
   buildEmbed,
   buildComponents,
 } = require('./lib/event-core');
-const { sessionStore, clubsForTeam, getSession, saveSession, newSession } = require('./lib/session-core');
+const { sessionStore, getSession, saveSession, newSession } = require('./lib/session-core');
 const {
   lineupStore, lineupKey, emptyLineup, getLineup, saveLineup,
   switchFormation, autoFill, lineupEmbed, lineupComponents, requestLineupRefresh, FORMATION_NAMES,
@@ -521,42 +521,72 @@ async function handleRoleButton(interaction) {
 
 // ---------- /session und /sessionend ----------
 // Antworten sind nur für den Auslöser sichtbar (flags: 64), damit im Kanal nur die Bilder stehen.
-function teamOption(interaction) {
-  const opt = (interaction.data.options || []).find((o) => o.name === 'team');
-  return opt ? String(opt.value) : 'beide';
+// Der Club wird per Autovervollständigung gesucht: Wert = "<clubId>|<Clubname>".
+
+async function handleSessionAutocomplete(interaction) {
+  const focused = (interaction.data.options || []).find((o) => o.focused);
+  const typed = String(focused?.value || '').trim();
+  const { searchClubs } = require('./lib/club-search');
+  const clubs = await searchClubs(typed);
+  const choices = clubs.slice(0, 25).map((c) => ({
+    name: `${c.name} · ${c.games} Spiele · ID ${c.clubId}`.slice(0, 100),
+    value: `${c.clubId}|${c.name}`.slice(0, 100),
+  }));
+  // Reine Zahl eingetippt -> direkt als Club-ID anbieten
+  if (/^\d{3,}$/.test(typed) && !choices.some((c) => c.value.startsWith(typed + '|'))) {
+    choices.unshift({ name: `Club-ID ${typed}`, value: `${typed}|Club ${typed}` });
+  }
+  return json(200, { type: 8, data: { choices: choices.slice(0, 25) } });
+}
+
+function parseClubOption(interaction) {
+  const raw = String((interaction.data.options || []).find((o) => o.name === 'club')?.value || '').trim();
+  const m = raw.match(/^(\d{3,})(?:\|(.+))?$/);
+  if (!m) return null;
+  return { clubId: m[1], label: (m[2] || `Club ${m[1]}`).trim() };
+}
+
+async function listRunningSessions(store) {
+  const { blobs } = await store.list({ prefix: 'session-' });
+  const out = [];
+  for (const b of blobs) {
+    const s = await store.get(b.key, { type: 'json' });
+    if (s) out.push(s);
+  }
+  return out;
 }
 
 async function handleSessionStart(interaction) {
-  const store = sessionStore();
-  const clubs = clubsForTeam(teamOption(interaction));
-  const userName = interaction.member?.user?.global_name || interaction.member?.user?.username || '';
-  const started = [];
-  const already = [];
-  for (const club of clubs) {
-    if (await getSession(store, club.clubId)) {
-      already.push(club.label);
-      continue;
-    }
-    await saveSession(store, newSession(club, userName));
-    started.push(club.label);
+  const club = parseClubOption(interaction);
+  if (!club) {
+    return json(200, {
+      type: 4,
+      data: { content: '⚠️ Bitte den Club aus der **Vorschlagsliste** auswählen (Namen tippen, kurz warten, dann anklicken).', flags: 64 },
+    });
   }
-  const lines = [];
-  if (started.length) lines.push(`✅ Session gestartet für **${started.join(' & ')}**. Ich prüfe alle 2 Minuten auf neue Spiele und poste die Statistiken in #match-history.`);
-  if (already.length) lines.push(`ℹ️ Läuft schon: ${already.join(' & ')}`);
-  lines.push('Beenden mit **/sessionend** – dann kommt die Session-Bilanz.');
-  return json(200, { type: 4, data: { content: lines.join('\n'), flags: 64 } });
+  const store = sessionStore();
+  if (await getSession(store, club.clubId)) {
+    return json(200, { type: 4, data: { content: `ℹ️ Für **${club.label}** läuft schon eine Session. Beenden mit **/sessionend**.`, flags: 64 } });
+  }
+  const userName = interaction.member?.user?.global_name || interaction.member?.user?.username || '';
+  await saveSession(store, newSession(club, userName));
+  return json(200, {
+    type: 4,
+    data: {
+      content: `✅ Session gestartet für **${club.label}** (ID ${club.clubId}). Ich prüfe alle 2 Minuten auf neue Spiele und poste die Statistiken in #match-history.\nBeenden mit **/sessionend** – dann kommt die Session-Bilanz.`,
+      flags: 64,
+    },
+  });
 }
 
-async function handleSessionEnd(interaction) {
+async function handleSessionEnd() {
   const store = sessionStore();
-  const clubs = clubsForTeam(teamOption(interaction));
   const ending = [];
-  for (const club of clubs) {
-    const session = await getSession(store, club.clubId);
-    if (!session) continue;
+  for (const session of await listRunningSessions(store)) {
+    if (session.endRequestedAt) continue;
     session.endRequestedAt = Date.now();
     await saveSession(store, session);
-    ending.push(`${club.label} (${session.matches.length} ${session.matches.length === 1 ? 'Spiel' : 'Spiele'} bisher)`);
+    ending.push(`${session.label} (${session.matches.length} ${session.matches.length === 1 ? 'Spiel' : 'Spiele'} bisher)`);
   }
   const content = ending.length
     ? `🏁 Session wird beendet: ${ending.join(', ')}.\nDie Bilanz kommt in ca. 2–4 Minuten in #match-history (letzte Spiele werden noch mitgenommen).`
@@ -573,18 +603,22 @@ const NO_ADMIN = '⛔ Nur Admins können den Kader bearbeiten.';
 async function handleKaderCommand(interaction) {
   if (!(await isKaderAdmin(interaction))) return ephemeral(NO_ADMIN);
   const team = String((interaction.data.options || []).find((o) => o.name === 'team')?.value || '1');
-  const { role, players } = await getKaderPlayers(interaction.guild_id, team);
-  if (!role) return ephemeral(`⚠️ Die Rolle **${KADER_TEAMS[team].roleName}** gibt es auf dem Server nicht.`);
 
-  // Sofort Liste + Buttons posten, das Bild ergänzt kader-worker ein paar Sekunden später
-  await requestKaderRefresh({
-    action: 'post',
-    team,
-    guildId: interaction.guild_id,
-    appId: interaction.application_id,
-    token: interaction.token,
-  });
-  return json(200, { type: 4, data: { embeds: [buildKaderEmbed(team, players, role.name)], components: kaderComponents(team) } });
+  // Discord gibt nur 3 Sekunden Zeit. Deshalb sofort "Bot denkt nach…" zurückgeben (type 5)
+  // und Rollen, Mitglieder und Bild komplett im kader-worker erledigen. Der ersetzt die Nachricht dann.
+  try {
+    await requestKaderRefresh({
+      action: 'post',
+      team,
+      guildId: interaction.guild_id,
+      appId: interaction.application_id,
+      token: interaction.token,
+    });
+  } catch (err) {
+    console.error('kader:', err);
+    return ephemeral('⚠️ Kader konnte nicht gestartet werden. Bitte gleich nochmal versuchen.');
+  }
+  return json(200, { type: 5 });
 }
 
 function playerOptions(players) {
@@ -848,6 +882,11 @@ exports.handler = async (event) => {
 
   if (interaction.type === 2 && interaction.data?.name === 'kader') {
     return handleKaderCommand(interaction);
+  }
+
+  // Autovervollständigung (Clubsuche bei /session)
+  if (interaction.type === 4 && interaction.data?.name === 'session') {
+    return handleSessionAutocomplete(interaction);
   }
 
   if (interaction.type === 2 && interaction.data?.name === 'session') {

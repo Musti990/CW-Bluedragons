@@ -11,6 +11,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function buildKaderMessage(guildId, team) {
   const { role, players } = await getKaderPlayers(guildId, team);
+  if (!role) {
+    const err = new Error(`⚠️ Die Rolle **${KADER_TEAMS[team].roleName}** gibt es auf dem Server nicht. Bitte anlegen und den Spielern geben.`);
+    err.userMessage = true;
+    throw err;
+  }
   const imageName = `kader-team${team}.png`;
   const svg = buildKaderSvg({
     teamName: KADER_TEAMS[team].label,
@@ -36,9 +41,25 @@ async function finishKaderPost({ team, guildId, appId, token }) {
   const store = kaderStore();
   for (let attempt = 0; attempt < 4; attempt++) {
     if (attempt > 0) await sleep(1500); // die Antwort auf /kader muss erst bei Discord angekommen sein
+    let body;
+    try {
+      body = await buildKaderMessage(guildId, team);
+    } catch (err) {
+      // Fehler direkt in die "denkt nach…"-Nachricht schreiben, statt sie hängen zu lassen
+      const text = err.userMessage
+        ? err.message
+        : `⚠️ Kader konnte nicht geladen werden: ${err.message}\nTipp: Im Discord Developer Portal unter Bot muss „Server Members Intent“ eingeschaltet sein.`;
+      await api(`/webhooks/${appId}/${token}/messages/@original`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text, embeds: [], components: [] }),
+      });
+      await store.delete(`pending-${team}`);
+      return false;
+    }
     const res = await api(`/webhooks/${appId}/${token}/messages/@original`, {
       method: 'PATCH',
-      body: await buildKaderMessage(guildId, team),
+      body,
     });
     if (res.ok) {
       const msg = await res.json();
