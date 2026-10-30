@@ -41,7 +41,7 @@ exports.handler = async () => {
     },
     {
       name: 'rolle',
-      description: 'Postet die Rollenwahl (BD Spieler, Aushilfe, Tester, Late Night)',
+      description: 'Postet die Rollenwahl (Aushilfe, Tester, Late Night)',
     },
     {
       name: 'kader',

@@ -8,6 +8,7 @@ const {
   buildComponents,
 } = require('./lib/event-core');
 const { sessionStore, getSession, saveSession, newSession } = require('./lib/session-core');
+const { INFO_PARTS, openTesterTicket, archiveAndCloseTicket, getInfo, buildInfoModal, saveInfoPart, infoEmbed, postInfoToChannel } = require('./lib/ticket-core');
 const {
   lineupStore, lineupKey, emptyLineup, getLineup, saveLineup,
   switchFormation, autoFill, lineupEmbed, lineupComponents, requestLineupRefresh, FORMATION_NAMES,
@@ -457,10 +458,9 @@ async function handlePositionNickButton(interaction) {
 // Reihenfolge = Priorität: hat jemand mehrere Rollen, steht nur die oberste im Nickname.
 // label = Text auf Button und im Embed, style: 1 blau, 2 grau, 3 grün, 4 rot, row = Button-Reihe
 const GENERAL_ROLES = [
-  { name: 'Bluedragons Spieler', label: 'BD Spieler', tag: 'BD Spieler', emoji: '🐉', style: 1, row: 0 },
   { name: 'Aushilfe', label: 'Aushilfe', tag: 'Aushilfe', emoji: '🤝', style: 3, row: 0 },
-  { name: 'Tester', label: 'Tester', tag: 'Tester', emoji: '🧪', style: 2, row: 1 },
-  { name: 'Late Night Spieler', label: 'Late Night', tag: null, emoji: '🌙', style: 2, row: 1 },
+  { name: 'Tester', label: 'Tester', tag: 'Tester', emoji: '🧪', style: 1, row: 0 },
+  { name: 'Late Night Spieler', label: 'Late Night', tag: null, emoji: '🌙', style: 2, row: 0 },
 ];
 const ROLE_TAGS = GENERAL_ROLES.map((r) => r.tag).filter(Boolean);
 
@@ -556,6 +556,22 @@ async function handleRoleButton(interaction) {
   }
 
   const hasRole = (interaction.member?.roles || []).includes(role.id);
+
+  // Tester gibt es nicht direkt: es öffnet sich ein Bewerbungs-Ticket (privater Kanal mit Fragen)
+  if (roleName === 'Tester' && !hasRole) {
+    const t = await openTesterTicket(interaction, roles);
+    if (t.error) return json(200, { type: 4, data: { content: `⚠️ ${t.error}`, flags: 64 } });
+    return json(200, {
+      type: 4,
+      data: {
+        content: t.existing
+          ? `🎫 Du hast schon ein offenes Ticket: <#${t.channelId}>`
+          : `🎫 Dein Tester-Ticket ist offen: <#${t.channelId}>\nBeantworte dort die Fragen – ein Admin meldet sich.`,
+        flags: 64,
+      },
+    });
+  }
+
   const method = hasRole ? 'DELETE' : 'PUT';
 
   const res = await fetch(
@@ -930,6 +946,94 @@ async function handleLineupModal(interaction) {
 }
 
 
+// ---------- Tester-Ticket: Annehmen / Ablehnen / Schließen (nur Admins) ----------
+async function handleTicketButton(interaction) {
+  const [, action, applicantId] = interaction.data.custom_id.split(':');
+  const eph = (content) => json(200, { type: 4, data: { content, flags: 64 } });
+
+  // Infoblatt-Formular öffnen (nur der Bewerber selbst)
+  if (action === 'form1' || action === 'form2') {
+    if (interaction.member?.user?.id !== applicantId) return eph('⛔ Das Infoblatt kann nur der Bewerber ausfüllen.');
+    const existing = await getInfo(interaction.guild_id, applicantId);
+    return json(200, buildInfoModal(action === 'form1' ? 1 : 2, applicantId, existing));
+  }
+
+  if (!(await isKaderAdmin(interaction))) return eph('⛔ Nur Admins können das Ticket bearbeiten.');
+
+  const guildId = interaction.guild_id;
+  const channelId = interaction.channel_id || interaction.channel?.id;
+  const adminName = interaction.member?.nick || interaction.member?.user?.global_name || interaction.member?.user?.username;
+  const authHeader = { Authorization: `Bot ${process.env.DISCORD_TOKEN}` };
+
+  if (action === 'close') {
+    const r = await archiveAndCloseTicket(guildId, applicantId, channelId, adminName);
+    if (r.error) return eph(`⚠️ ${r.error}`);
+    return json(200, { type: 6 }); // Kanal ist weg, Archiv-Eintrag ist gepostet
+  }
+
+  const embed = { ...(interaction.message?.embeds?.[0] || {}) };
+  const closeRow = [
+    { type: 1, components: [{ type: 2, style: 2, label: 'Ticket schließen', emoji: { name: '🔒' }, custom_id: `ticket:close:${applicantId}` }] },
+  ];
+
+  if (action === 'reject') {
+    embed.color = 0xda373c;
+    embed.fields = [{ name: 'Status', value: `❌ Abgelehnt von **${adminName}**` }];
+    return json(200, { type: 7, data: { content: `<@${applicantId}>`, embeds: [embed], components: closeRow } });
+  }
+
+  // accept: Tester-Rolle geben + Nickname-Zusatz
+  const rolesRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/roles`, { headers: authHeader });
+  const roles = rolesRes.ok ? await rolesRes.json() : [];
+  const role = roles.find((r) => r.name === 'Tester');
+  if (!role) return eph('⚠️ Es gibt keine Rolle **Tester** auf dem Server.');
+  const put = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${applicantId}/roles/${role.id}`, { method: 'PUT', headers: authHeader });
+  if (!put.ok) return eph('⚠️ Rolle konnte nicht vergeben werden. Die Bot-Rolle muss über **Tester** stehen.');
+
+  const memberRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${applicantId}`, { headers: authHeader });
+  if (memberRes.ok) {
+    const m = await memberRes.json();
+    const heldNames = new Set(roles.filter((r) => (m.roles || []).includes(r.id) || r.id === role.id).map((r) => r.name));
+    const winner = GENERAL_ROLES.find((r) => r.tag && heldNames.has(r.name));
+    const parsed = parseNick(m.nick || m.user?.global_name || m.user?.username);
+    parsed.tag = winner ? winner.tag : null;
+    await setNick(guildId, applicantId, buildNick(parsed));
+  }
+
+  embed.color = 0x248046;
+  embed.fields = [{ name: 'Status', value: `✅ Angenommen von **${adminName}** – <@${applicantId}> ist jetzt Tester! 🧪` }];
+  return json(200, { type: 7, data: { content: `<@${applicantId}>`, embeds: [embed], components: closeRow } });
+}
+
+// Infoblatt-Formular abgeschickt
+async function handleTicketModal(interaction) {
+  const [, partStr, applicantId] = interaction.data.custom_id.split(':');
+  const part = Number(partStr);
+  const guildId = interaction.guild_id;
+  const before = await getInfo(guildId, applicantId);
+  const wasComplete = Boolean(before.complete);
+  const info = await saveInfoPart(guildId, applicantId, interaction.data.components);
+
+  if (part < INFO_PARTS.length) {
+    return json(200, {
+      type: 4,
+      data: {
+        content: `✅ Teil ${part} gespeichert. Jetzt noch Teil ${part + 1}:`,
+        flags: 64,
+        components: [
+          { type: 1, components: [{ type: 2, style: 1, label: `Weiter zu Teil ${part + 1}`, emoji: { name: '📋' }, custom_id: `ticket:form${part + 1}:${applicantId}` }] },
+        ],
+      },
+    });
+  }
+
+  // Letzter Teil: Infoblatt öffentlich im Ticket posten
+  info.complete = true;
+  await saveInfoPart(guildId, applicantId, [{ components: [{ custom_id: 'complete', value: 'true' }] }]);
+  await postInfoToChannel(applicantId, info, wasComplete, interaction.channel_id || interaction.channel?.id);
+  return json(200, { type: 4, data: { embeds: [infoEmbed(applicantId, info, wasComplete)], allowed_mentions: { parse: [] } } });
+}
+
 // ---------- Handler ----------
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { error: 'method not allowed' });
@@ -982,6 +1086,10 @@ exports.handler = async (event) => {
     return handleAufstellungVorschlagCommand(interaction);
   }
 
+  if (interaction.type === 5 && interaction.data.custom_id.startsWith('ticketform:')) {
+    return handleTicketModal(interaction);
+  }
+
   if (interaction.type === 5 && interaction.data.custom_id.startsWith('kader:nummodal:')) {
     return handleKaderModal(interaction);
   }
@@ -1002,6 +1110,9 @@ exports.handler = async (event) => {
     }
     if (interaction.data.custom_id.startsWith('posnick:')) {
       return handlePositionNickButton(interaction);
+    }
+    if (interaction.data.custom_id.startsWith('ticket:')) {
+      return handleTicketButton(interaction);
     }
     if (interaction.data.custom_id.startsWith('genrole:')) {
       return handleRoleButton(interaction);
