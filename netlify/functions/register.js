@@ -41,7 +41,7 @@ exports.handler = async () => {
     },
     {
       name: 'rolle',
-      description: 'Postet ein dauerhaftes Panel zur Rollenwahl (Bluedragons Spieler, Aushilfe, Tester, Late Night Spieler)',
+      description: 'Postet die Rollenwahl (BD Spieler, Aushilfe, Tester, Late Night)',
     },
     {
       name: 'kader',
