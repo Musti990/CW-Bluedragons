@@ -349,33 +349,71 @@ async function handleButton(interaction, store) {
 }
 
 
-// ---------- Positions-Auswahl im Nickname (/position hp / /position np) ----------
-const POSITIONS = ['ZDM', 'ZIV', 'LIV', 'RIV', 'LM', 'RM', 'ZOM', 'ST', 'TW'];
+// ---------- Positions-Auswahl als Rolle (/position) ----------
+// Klick vergibt die Rolle mit genau diesem Namen (z. B. "ZDM"), nochmal klicken entfernt sie.
+// Der Nickname bleibt unverändert.
+// Gruppen = Embed-Zeilen und Button-Reihen. style: 1 blau, 2 grau, 3 grün, 4 rot
+const POSITION_GROUPS = [
+  { title: 'Torwart', emoji: '🧤', style: 3, positions: ['TW'] },
+  { title: 'Abwehr', emoji: '🛡️', style: 1, positions: ['LIV', 'ZIV', 'RIV'] },
+  { title: 'Mittelfeld', emoji: '🎯', style: 2, positions: ['LM', 'ZDM', 'ZOM', 'RM'] },
+  { title: 'Sturm', emoji: '⚽', style: 4, positions: ['ST'] },
+];
+const POSITIONS = POSITION_GROUPS.flatMap((g) => g.positions);
 
-function buildPositionButtons(prefix) {
-  const rows = [];
-  for (let i = 0; i < POSITIONS.length; i += 5) {
-    const chunk = POSITIONS.slice(i, i + 5);
-    rows.push({
-      type: 1,
-      components: chunk.map((p) => ({ type: 2, style: 1, label: p, custom_id: `posnick:${prefix}:${p}` })),
-    });
-  }
-  return rows;
+function buildPositionButtons() {
+  return POSITION_GROUPS.map((g) => ({
+    type: 1,
+    components: g.positions.map((p) => ({
+      type: 2,
+      style: g.style,
+      label: p,
+      custom_id: `posrole:${p}`,
+      ...(g.positions.length === 1 ? { emoji: { name: g.emoji } } : {}),
+    })),
+  }));
 }
 
-async function handlePositionCommand(interaction) {
-  const sub = interaction.data.options?.[0]?.name; // 'hp' oder 'np'
-  const prefix = sub === 'np' ? 'NP' : 'HP';
-  const label = sub === 'np' ? 'Nebenposition' : 'Hauptposition';
-
+async function handlePositionCommand() {
+  const list = POSITION_GROUPS.map((g) => `${g.emoji} **${g.title}** — ${g.positions.join(' · ')}`).join('\n');
   return json(200, {
     type: 4,
     data: {
-      content: `Wähle deine ${label}:`,
-      components: buildPositionButtons(prefix),
+      embeds: [
+        {
+          title: '🐉 BLUE DRAGONS · POSITIONEN',
+          description: `Wähle, wo du spielst – du bekommst die passende Rolle.\nMehrere möglich, nochmal klicken entfernt sie.\n\n${list}`,
+          color: 0x1f6bff,
+          thumbnail: { url: `${brandBase()}/blue-dragons-logo.png` },
+          footer: { text: 'United by Blue Fire 🐉' },
+        },
+      ],
+      components: buildPositionButtons(),
     },
   });
+}
+
+async function handlePositionRoleButton(interaction) {
+  const position = interaction.data.custom_id.split(':')[1];
+  const guildId = interaction.guild_id;
+  const userId = interaction.member?.user?.id;
+  const authHeader = { Authorization: `Bot ${process.env.DISCORD_TOKEN}` };
+  const eph = (content) => json(200, { type: 4, data: { content, flags: 64 } });
+
+  const rolesRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/roles`, { headers: authHeader });
+  if (!rolesRes.ok) return eph('Konnte Rollen nicht laden.');
+  const role = (await rolesRes.json()).find((r) => r.name === position);
+  if (!role) return eph(`Es gibt noch keine Rolle **${position}** auf dem Server. Bitte zuerst anlegen (genau so geschrieben).`);
+
+  const hasRole = (interaction.member?.roles || []).includes(role.id);
+  const res = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${userId}/roles/${role.id}`, {
+    method: hasRole ? 'DELETE' : 'PUT',
+    headers: authHeader,
+  });
+  if (!res.ok) {
+    return eph(`Konnte Rolle nicht ${hasRole ? 'entfernen' : 'vergeben'}. Die Bot-Rolle muss über **${position}** stehen und „Rollen verwalten“ dürfen.`);
+  }
+  return eph(hasRole ? `❌ Position **${position}** entfernt.` : `✅ Position **${position}** als Rolle bekommen.`);
 }
 
 async function handlePositionNickButton(interaction) {
@@ -385,14 +423,7 @@ async function handlePositionNickButton(interaction) {
   const authHeader = { Authorization: `Bot ${process.env.DISCORD_TOKEN}`, 'Content-Type': 'application/json' };
 
   const currentNick = interaction.member?.nick || interaction.member?.user?.username || 'Unbekannt';
-  const baseName = currentNick.split('|')[0].trim();
-
-  const tags = { HP: [], NP: [] };
-  const tagRegex = /(HP|NP):\s*([A-ZÄÖÜ,]+)/g;
-  let match;
-  while ((match = tagRegex.exec(currentNick)) !== null) {
-    tags[match[1]] = match[2].split(',').filter(Boolean);
-  }
+  const tags = parseNick(currentNick); // behält "BD Spieler" usw. bei
 
   const list = tags[prefix];
   const idx = list.indexOf(position);
@@ -402,17 +433,8 @@ async function handlePositionNickButton(interaction) {
     list.splice(idx, 1);
   }
 
-  const parts = [baseName];
-  if (tags.HP.length > 0) parts.push(`HP:${tags.HP.join(',')}`);
-  if (tags.NP.length > 0) parts.push(`NP: ${tags.NP.join(',')}`);
-  let newNick = parts.join(' | ');
-  if (newNick.length > 32) newNick = newNick.slice(0, 32);
-
-  const res = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`, {
-    method: 'PATCH',
-    headers: authHeader,
-    body: JSON.stringify({ nick: newNick }),
-  });
+  const newNick = buildNick(tags);
+  const res = await setNick(guildId, userId, newNick);
 
   if (!res.ok) {
     return json(200, {
@@ -431,37 +453,78 @@ async function handlePositionNickButton(interaction) {
 }
 
 // ---------- Rollen-Auswahl (/rolle) ----------
-// name = exakter Rollenname auf dem Server, emoji/info nur für die Anzeige
+// name = exakter Rollenname auf dem Server, tag = Zusatz im Nickname (null = kein Zusatz)
+// Reihenfolge = Priorität: hat jemand mehrere Rollen, steht nur die oberste im Nickname.
+// label = Text auf Button und im Embed, style: 1 blau, 2 grau, 3 grün, 4 rot, row = Button-Reihe
 const GENERAL_ROLES = [
-  { name: 'Tester', emoji: '🧪', info: 'testet neue Bot-Funktionen' },
-  { name: 'Aushilfe', emoji: '🤝', info: 'springt ein, wenn Spieler fehlen' },
-  { name: 'Late Night Spieler', emoji: '🌙', info: 'spielt auch spät abends' },
+  { name: 'Bluedragons Spieler', label: 'BD Spieler', tag: 'BD Spieler', emoji: '🐉', style: 1, row: 0 },
+  { name: 'Aushilfe', label: 'Aushilfe', tag: 'Aushilfe', emoji: '🤝', style: 3, row: 0 },
+  { name: 'Tester', label: 'Tester', tag: 'Tester', emoji: '🧪', style: 2, row: 1 },
+  { name: 'Late Night Spieler', label: 'Late Night', tag: null, emoji: '🌙', style: 2, row: 1 },
 ];
+const ROLE_TAGS = GENERAL_ROLES.map((r) => r.tag).filter(Boolean);
+
+// Nickname zerlegen: "Musti | BD Spieler | HP:ZDM | NP: IV" -> { base, tag, HP, NP }
+function parseNick(nick) {
+  const segs = String(nick || '').split('|').map((x) => x.trim()).filter(Boolean);
+  const out = { base: segs[0] || 'Spieler', tag: null, HP: [], NP: [] };
+  segs.slice(1).forEach((seg) => {
+    const m = seg.match(/^(HP|NP):\s*([A-ZÄÖÜ,0-9]+)$/);
+    if (m) out[m[1]] = m[2].split(',').filter(Boolean);
+    else if (ROLE_TAGS.includes(seg)) out.tag = seg;
+  });
+  return out;
+}
+
+// Nickname wieder zusammensetzen (Discord erlaubt max. 32 Zeichen -> zuerst NP, dann HP weglassen)
+function buildNick({ base, tag, HP, NP }) {
+  const head = [base];
+  if (tag) head.push(tag);
+  const variants = [
+    [...head, HP.length ? `HP:${HP.join(',')}` : null, NP.length ? `NP: ${NP.join(',')}` : null],
+    [...head, HP.length ? `HP:${HP.join(',')}` : null],
+    head,
+  ];
+  for (const v of variants) {
+    const nick = v.filter(Boolean).join(' | ');
+    if (nick.length <= 32) return nick;
+  }
+  return head.join(' | ').slice(0, 32);
+}
+
+async function setNick(guildId, userId, nick) {
+  return fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nick }),
+  });
+}
 
 function buildRoleComponents() {
   const rows = [];
-  for (let i = 0; i < GENERAL_ROLES.length; i += 5) {
-    const chunk = GENERAL_ROLES.slice(i, i + 5);
-    rows.push({
-      type: 1,
-      components: chunk.map((r) => ({ type: 2, style: 1, label: r.name, emoji: { name: r.emoji }, custom_id: `genrole:${r.name}` })),
-    });
-  }
-  return rows;
+  GENERAL_ROLES.forEach((r) => {
+    rows[r.row] = rows[r.row] || { type: 1, components: [] };
+    rows[r.row].components.push({ type: 2, style: r.style, label: r.label, emoji: { name: r.emoji }, custom_id: `genrole:${r.name}` });
+  });
+  return rows.filter(Boolean);
+}
+
+function brandBase() {
+  return process.env.URL || 'https://DEIN-SITE-NAME.netlify.app';
 }
 
 async function handleRoleCommand() {
-  const base = process.env.URL || 'https://DEIN-SITE-NAME.netlify.app';
-  const list = GENERAL_ROLES.map((r) => `${r.emoji} **${r.name}** – ${r.info}`).join('\n');
+  const list = GENERAL_ROLES.map((r) => `${r.emoji} **${r.label}**`).join('\n');
   return json(200, {
     type: 4,
     data: {
       embeds: [
         {
-          title: '🐉 Blue Dragons · Rollenwahl',
-          description: `Hol dir deine Rolle per Klick.\nNochmal klicken entfernt sie wieder.\n\n${list}`,
+          title: '🐉 BLUE DRAGONS · ROLLEN',
+          description: `Hol dir deine Rolle per Klick – sie steht dann auch in deinem Namen.\nNochmal klicken entfernt sie.\n\n${list}`,
           color: 0x1f6bff,
-          thumbnail: { url: `${base}/blue-dragons-logo.png` },
+          thumbnail: { url: `${brandBase()}/blue-dragons-logo.png` },
+          footer: { text: 'United by Blue Fire 🐉' },
         },
       ],
       components: buildRoleComponents(),
@@ -510,10 +573,24 @@ async function handleRoleButton(interaction) {
     });
   }
 
+  // Nickname anpassen: höchste Rolle mit Zusatz gewinnt
+  const roleIdsAfter = new Set(interaction.member?.roles || []);
+  if (hasRole) roleIdsAfter.delete(role.id);
+  else roleIdsAfter.add(role.id);
+  const heldNames = new Set(roles.filter((r) => roleIdsAfter.has(r.id)).map((r) => r.name));
+  const winner = GENERAL_ROLES.find((r) => r.tag && heldNames.has(r.name));
+  const parsed = parseNick(interaction.member?.nick || interaction.member?.user?.global_name || interaction.member?.user?.username);
+  parsed.tag = winner ? winner.tag : null;
+  const newNick = buildNick(parsed);
+  let nickInfo = '';
+  const nickRes = await setNick(guildId, userId, newNick);
+  if (nickRes.ok) nickInfo = `\nDein Name: **${newNick}**`;
+  else nickInfo = '\n(Nickname konnte nicht geändert werden – Server-Owner kann der Bot nicht umbenennen.)';
+
   return json(200, {
     type: 4,
     data: {
-      content: hasRole ? `❌ Rolle **${roleName}** entfernt.` : `✅ Rolle **${roleName}** zugewiesen.`,
+      content: (hasRole ? `❌ Rolle **${roleName}** entfernt.` : `✅ Rolle **${roleName}** zugewiesen.`) + nickInfo,
       flags: 64,
     },
   });
@@ -919,6 +996,9 @@ exports.handler = async (event) => {
     }
     if (interaction.data.custom_id.startsWith('kader:')) {
       return handleKaderButton(interaction);
+    }
+    if (interaction.data.custom_id.startsWith('posrole:')) {
+      return handlePositionRoleButton(interaction);
     }
     if (interaction.data.custom_id.startsWith('posnick:')) {
       return handlePositionNickButton(interaction);

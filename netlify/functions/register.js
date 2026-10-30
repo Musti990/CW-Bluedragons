@@ -37,15 +37,11 @@ exports.handler = async () => {
     },
     {
       name: 'position',
-      description: 'Positionsauswahl (schreibt sie in deinen Nickname)',
-      options: [
-        { name: 'hp', description: 'Hauptposition festlegen', type: 1 },
-        { name: 'np', description: 'Nebenposition festlegen', type: 1 },
-      ],
+      description: 'Postet die Positionsauswahl (Position wird als Rolle vergeben)',
     },
     {
       name: 'rolle',
-      description: 'Postet ein dauerhaftes Panel zur Rollenwahl (Tester, Aushilfe, Late Night Spieler)',
+      description: 'Postet ein dauerhaftes Panel zur Rollenwahl (Bluedragons Spieler, Aushilfe, Tester, Late Night Spieler)',
     },
     {
       name: 'kader',

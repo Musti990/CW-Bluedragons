@@ -96,11 +96,19 @@ async function getKaderPlayers(guildId, team) {
   const members = await res.json();
   const numbers = await getNumbers(team);
 
+  // Position aus Positions-Rollen (z. B. Rolle "ZDM"), sonst aus dem Nickname (HP:/NP:)
+  const roleNameById = new Map(roles.map((r) => [r.id, String(r.name).toUpperCase()]));
+  const POS_ORDER = ['TW', 'LIV', 'ZIV', 'RIV', 'IV', 'LV', 'RV', 'ZDM', 'ZM', 'LM', 'RM', 'ZOM', 'LF', 'RF', 'ST'];
+  const posFromRoles = (m) => {
+    const names = new Set((m.roles || []).map((id) => roleNameById.get(id)).filter(Boolean));
+    return POS_ORDER.find((p) => names.has(p)) || null;
+  };
+
   const players = members
     .filter((m) => (m.roles || []).includes(role.id) && !m.user?.bot)
     .map((m) => {
       const { name, hp, np } = parseNick(m.nick || m.user?.global_name || m.user?.username);
-      const pos = hp || np || null;
+      const pos = posFromRoles(m) || hp || np || null;
       return {
         id: m.user.id,
         name,
