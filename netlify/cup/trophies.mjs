@@ -73,7 +73,7 @@ export function trophyPanel(S, clubs = {}, site = "") {
     flags: V2,
     components: [{
       type: 17, accent_color: 0x2f7bff, components: [
-        { type: 12, items: [{ media: { url: `${site}/cup-banner-halloffame.jpg` } }] },
+        { type: 12, items: [{ media: { url: `${site}/cup-banner-halloffame.jpg?v=cw2` } }] },
         txt(`## 🏅 Trophäenhalle · Ultimate Team Cup\n**${S.cups} ${S.cups === 1 ? "Cup" : "Cups"}** gespielt · **${withMedal} Spieler** mit Medaille · **${S.goals.toLocaleString("de-AT")} Tore**`),
         line(), txt("### 🏆 Medaillenspiegel · Spieler\n" + (clubRows.join("\n") || empty)),
         line(), txt("### 📊 Rekorde\n" + (rec.join("\n") || empty)),

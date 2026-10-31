@@ -89,7 +89,11 @@ export const BAN_REASONS = [
   "Beleidigungen, Respektlosigkeit oder unsportliches Verhalten",
   "Sonstiger schwerer Regelverstoß",
 ];
-export const BAN_DAYS = [1, 3, 7, 14, 30];
+export const BAN_DAYS = [1, 3, 7, 14, 30, 90, 180, 365];
+/** Sperrdauer lesbar: 1 Tag, 7 Tage, 1 Monat, 3 Monate, 12 Monate */
+export const durText = (d) => (d >= 30 && d % 30 === 0 ? `${d / 30} ${d === 30 ? "Monat" : "Monate"}` : d === 365 ? "12 Monate" : d === 180 ? "6 Monate" : d === 90 ? "3 Monate" : `${d} ${d === 1 ? "Tag" : "Tage"}`);
+/** Bei geänderten Banner-Bildern erhöhen – Discord lädt die Bilder dann neu statt aus dem Zwischenspeicher */
+export const BANNER_V = "cw2";
 export const BAN_DEFAULT_DAYS = 7;
 
 export const VIDEO_LIMIT = 3; // Größenvideo-Anforderungen pro Mannschaft und Turnier

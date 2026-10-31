@@ -1,6 +1,6 @@
 // Alle Discord-Ansichten (Embeds, Buttons, Formulare). Alle Ränder in Blau.
 import { coIds, isCo, MAX_CO } from "./co.mjs";
-import { COLOR, PLATFORMS, FORMATS, KO_SIZE, KO_NAME, BAN_REASONS, BAN_DAYS, BAN_DEFAULT_DAYS, VIDEO_LIMIT, VIDEO_WINDOW_MIN, RULES, FREIGABE_MIN, isFreilos, flagOf, platformOf } from "./data.mjs";
+import { durText, BANNER_V, COLOR, PLATFORMS, FORMATS, KO_SIZE, KO_NAME, BAN_REASONS, BAN_DAYS, BAN_DEFAULT_DAYS, VIDEO_LIMIT, VIDEO_WINDOW_MIN, RULES, FREIGABE_MIN, isFreilos, flagOf, platformOf } from "./data.mjs";
 import { fmtOf, nextFmt, standings, currentMatches, winner, koRoundName } from "./tournament.mjs";
 
 const FOOTER = { text: "CW Bluedragons · Ultimate Team Cup" };
@@ -35,7 +35,7 @@ export function regPanel(clubs) {
   return {
     flags: V2,
     components: [box(
-      gallery(`${site()}/cup-banner-registrieren.jpg`),
+      gallery(`${site()}/cup-banner-registrieren.jpg?v=${BANNER_V}`),
       txt(`## 📝 Spieler registrieren\nRegistriere dich **einmal** mit deiner **EA-ID** – danach meldest du dich jeden Tag mit einem Klick zum Cup an.\n\n**So geht's:**\n1️⃣ Auf **Jetzt registrieren** klicken\n2️⃣ Plattform wählen (PS5, Xbox oder PC)\n3️⃣ EA-ID eintragen – genau so, wie sie im Spiel steht\n\n👥 **${n} ${n === 1 ? "Spieler" : "Spieler"} registriert** · ${per}`),
       line(),
       row(btn("Jetzt registrieren", "reg_start", 1, { emoji: { name: "📝" } })),
@@ -143,7 +143,7 @@ export function hofHeader() {
   return {
     flags: V2,
     components: [box(
-      gallery(`${site()}/cup-banner-halloffame.jpg`),
+      gallery(`${site()}/cup-banner-halloffame.jpg?v=${BANNER_V}`),
       txt("## 🏆 Hall of Fame\nNach jedem Cup erscheinen hier die Sieger mit Siegerbild – Platz 1, 2 und 3."),
       txt("-# CW Bluedragons · Ultimate Team Cup"),
     )],
@@ -213,7 +213,7 @@ export function signupPanel(t, clubs = {}) {
   return {
     flags: V2,
     components: [box(
-      gallery(`${site()}/cup-banner-anmeldung.jpg`),
+      gallery(`${site()}/cup-banner-anmeldung.jpg?v=${BANNER_V}`),
       txt(head.join("\n")),
       line(),
       txt(formatBlock(closed ? t.playing.length || n : n, closed).replace(/^\*\*🏟️ Format: (\d+)er\*\*/, "### 🏟️ Turnierplan: $1er-Format").replace(/^\*\*⚠️ Noch kein Format\*\*/, "### ⚠️ Noch kein Format")),
@@ -427,7 +427,7 @@ export function banPanel(bans, clubs) {
       description:
         "Hier landen Spieler, die den Turnierabend kaputt machen, nicht auftauchen oder den Ablauf unnötig bremsen.\n\n" +
         "**Gründe**\n" + BAN_REASONS.map((r) => `• ${r}`).join("\n") +
-        "\n\n**Dauer**\n• Standardsperre 7 Tage\n• Abgelaufene Sperren werden automatisch entfernt\n\n" +
+        "\n\n**Dauer**\n• Standardsperre 7 Tage – möglich von 1 Tag bis 12 Monate\n• Abgelaufene Sperren werden automatisch entfernt\n\n" +
         `**Aktuell gesperrt (${bans.length})**\n` + (lines.length ? lines.join("\n\n") : "_Aktuell ist niemand gesperrt._"),
       footer: { text: "Aktualisiert sich automatisch · Sperren: Turnierleitung & Mods" },
     }],
@@ -444,11 +444,11 @@ export const banStep2 = (u) => ({
 
 export const banStep3 = (u, r) => ({
   content: `**Schritt 3 · Dauer** für <@${u}> – ${BAN_REASONS[r]}`, embeds: [],
-  components: [row({ type: 3, custom_id: `ban_d:${u}:${r}`, placeholder: "Dauer auswählen", options: BAN_DAYS.map((d) => ({ label: `${d} ${d === 1 ? "Tag" : "Tage"}${d === BAN_DEFAULT_DAYS ? " (Standard)" : ""}`, value: String(d), default: d === BAN_DEFAULT_DAYS })) })],
+  components: [row({ type: 3, custom_id: `ban_d:${u}:${r}`, placeholder: "Dauer auswählen", options: BAN_DAYS.map((d) => ({ label: `${durText(d)}${d === BAN_DEFAULT_DAYS ? " (Standard)" : ""}`, value: String(d), default: d === BAN_DEFAULT_DAYS })) })],
 });
 
 export const banStep4 = (u, r, d, partners = []) => ({
-  content: `**Bestätigen:** <@${u}> für **${d} ${d === 1 ? "Tag" : "Tage"}** sperren – ${BAN_REASONS[r]}${partners.length ? `\n-# ${partners.map((p) => `<@${p}>`).join(", ")} ${partners.length > 1 ? "gehören" : "gehört"} dazu und ${partners.length > 1 ? "können" : "kann"} mitgesperrt werden.` : ""}`,
+  content: `**Bestätigen:** <@${u}> für **${durText(d)}** sperren – ${BAN_REASONS[r]}${partners.length ? `\n-# ${partners.map((p) => `<@${p}>`).join(", ")} ${partners.length > 1 ? "gehören" : "gehört"} dazu und ${partners.length > 1 ? "können" : "kann"} mitgesperrt werden.` : ""}`,
   embeds: [],
   components: [row(
     btn("Sperren", `ban_ok:${u}:${r}:${d}:1`, 4),

@@ -1,4 +1,5 @@
 // Sperrliste: Personen sperren, automatisch ablaufen lassen.
+import { durText } from "./data.mjs";
 import { isCo } from "./co.mjs";
 import { get, mutate, getConfig, getClubs } from "./store.mjs";
 import { sendMessage, upsertMessage } from "./discord.mjs";
@@ -37,9 +38,9 @@ export async function ban(users, reason, days, byId, note = "") {
     }
   }, { initial: [] });
   for (const u of users) {
-    await notify(u, { embeds: [{ color: COLOR, title: "🚫 Du wurdest gesperrt", description: `Du bist für **${days} ${days === 1 ? "Tag" : "Tage"}** gesperrt – bis <t:${unix(until)}:F>.\n**Grund:** ${BAN_REASONS[reason]}\n\nIn dieser Zeit kannst du an keinem Cup teilnehmen. Fragen bitte an die Turnierleitung.` }] });
+    await notify(u, { embeds: [{ color: COLOR, title: "🚫 Du wurdest gesperrt", description: `Du bist für **${durText(days)}** gesperrt – bis <t:${unix(until)}:F>.\n**Grund:** ${BAN_REASONS[reason]}\n\nIn dieser Zeit kannst du an keinem Cup teilnehmen. Fragen bitte an die Turnierleitung.` }] });
   }
-  if (cfg.channels.log) await sendMessage(cfg.channels.log, { content: `🚫 ${users.map((u) => `<@${u}>`).join(" ")} gesperrt für **${days} ${days === 1 ? "Tag" : "Tage"}** von <@${byId}> – ${BAN_REASONS[reason]}${note ? `\n> Notiz: ${note}` : ""}` });
+  if (cfg.channels.log) await sendMessage(cfg.channels.log, { content: `🚫 ${users.map((u) => `<@${u}>`).join(" ")} gesperrt für **${durText(days)}** von <@${byId}> – ${BAN_REASONS[reason]}${note ? `\n> Notiz: ${note}` : ""}` });
   await refreshBanPanel();
 }
 

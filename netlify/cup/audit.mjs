@@ -1,3 +1,4 @@
+import { durText } from "./data.mjs";
 // Protokoll: Jede Aktion der Turnierleitung / des Staffs wird im Admin-Kanal festgehalten,
 // damit die Server-Admins nachvollziehen können, wer was gemacht hat.
 import { getConfig } from "./store.mjs";
@@ -26,7 +27,7 @@ export function describeComponent(i) {
   if (id.startsWith("ban_ok:") || id.startsWith("ban_m:")) {
     const [u, r, d, both] = id.split(":").slice(1);
     const note = id.startsWith("ban_m:") ? modalText(i, "note") : "";
-    return `🚫 sperrt <@${u}>${both === "2" ? " (und Partner)" : ""} für **${d} ${d === "1" ? "Tag" : "Tage"}** · Grund: ${BAN_REASONS[Number(r)] ?? r}${note ? ` · Notiz: ${note.slice(0, 200)}` : ""}`;
+    return `🚫 sperrt <@${u}>${both === "2" ? " (und Partner)" : ""} für **${durText(Number(d))}** · Grund: ${BAN_REASONS[Number(r)] ?? r}${note ? ` · Notiz: ${note.slice(0, 200)}` : ""}`;
   }
   if (id === "ban_lift_pick") return `🔓 hebt die Sperre von <@${v[0]}> auf`;
   if (id.startsWith("reset_ok:")) return `♻️ setzt zurück: **${{ stats: "Statistik", setup: "Einrichtung", all: "ALLES" }[id.split(":")[1]] || id}**`;

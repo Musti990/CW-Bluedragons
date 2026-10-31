@@ -5,7 +5,7 @@ import { enqueue, processQueue } from "../cup/roles.mjs";
 import * as T from "../cup/tournament.mjs";
 import * as V from "../cup/views.mjs";
 import * as F from "../cup/flow.mjs";
-import { GROUP_NAMES, ROUND_ROLES, CHANNEL_TYPES, DAYS, COLOR, PLATFORMS, flagOf, cleanEaId } from "../cup/data.mjs";
+import { durText, GROUP_NAMES, ROUND_ROLES, CHANNEL_TYPES, DAYS, COLOR, PLATFORMS, flagOf, cleanEaId } from "../cup/data.mjs";
 import * as B from "../cup/bans.mjs";
 import { baseNameOf, nickFor, setNick } from "../cup/names.mjs";
 import * as AS from "../cup/autosetup.mjs";
@@ -610,5 +610,5 @@ async function doBan(i, context, rest, note) {
     if (mine) users.push(...F.membersOf(clubs, mine.club).filter((x) => x !== u));
   }
   later(context, () => B.ban(users, Number(r), Number(d), uidOf(i), note));
-  return reply(i, { content: `✅ ${users.map((x) => `<@${x}>`).join(", ").replace(/, ([^,]*)$/, " und $1")} ${users.length > 1 ? "sind" : "ist"} für **${d} ${d === "1" ? "Tag" : "Tage"}** gesperrt. Die Sperrliste wird aktualisiert, und die Betroffenen werden im Benachrichtigungs-Kanal markiert.`, components: [] });
+  return reply(i, { content: `✅ ${users.map((x) => `<@${x}>`).join(", ").replace(/, ([^,]*)$/, " und $1")} ${users.length > 1 ? "sind" : "ist"} für **${durText(Number(d))}** gesperrt. Die Sperrliste wird aktualisiert, und die Betroffenen werden im Benachrichtigungs-Kanal markiert.`, components: [] });
 }
