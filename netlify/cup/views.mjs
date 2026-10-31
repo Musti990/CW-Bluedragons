@@ -138,6 +138,50 @@ export function overviewMessages(clubs) {
   return msgs;
 }
 
+// ---------- Admin-Panel (statt Befehlen) ----------
+export function adminPanel(t) {
+  const st = t ? { anmeldung: "📝 Anmeldung offen", checkin: "✅ Check-in läuft", gruppen: t.league ? "⚽ Ligaphase läuft" : "⚽ Gruppenphase läuft", ko: "⚔️ K.-o.-Phase läuft" }[t.status] || "–" : "Kein Cup aktiv";
+  return {
+    embeds: [{
+      color: COLOR,
+      title: "🛠️ ADMIN-PANEL · ULTIMATE TEAM CUP",
+      description: `Alle wichtigen Aktionen per Klick – nur für **Turnierleitung** und Server-Admins.\nAntworten sieht nur, wer klickt.\n\n**Aktueller Cup:** ${t ? `${esc(t.name)} · ${st} · ${t.reg?.length ?? 0} angemeldet` : st}`,
+      fields: [
+        { name: "⚽ Turnier", value: "Anmeldeschluss · Check-in beenden · offene Spiele · Ergebnis festlegen", inline: false },
+        { name: "👤 Spieler", value: "Spieler abmelden · Profil löschen · Freilos hinzufügen/entfernen", inline: false },
+        { name: "🗓️ Cup & Test", value: "Neuen Cup anlegen · Cup abbrechen · Test-Cup (8/12/16/20) · Testspiele ausspielen", inline: false },
+        { name: "⚙️ Einrichtung", value: "Panels aktualisieren · Rechte setzen · Rollen-Check · Status", inline: false },
+      ],
+      thumbnail: { url: `${site()}/blue-dragons-logo.png` },
+      footer: { text: "Aktualisiert sich bei jedem Klick · Slash-Befehle funktionieren weiterhin" },
+    }],
+    components: [
+      row(btn("Anmeldeschluss", "adm:schluss", 1, { emoji: { name: "⏩" } }), btn("Check-in beenden", "adm:checkin", 1, { emoji: { name: "✅" } }), btn("Offene Spiele", "adm:spiele", 2, { emoji: { name: "📋" } }), btn("Ergebnis festlegen", "adm:ergebnis", 3, { emoji: { name: "✏️" } })),
+      row(btn("Spieler abmelden", "adm:abmelden", 2, { emoji: { name: "➖" } }), btn("Profil löschen", "adm:profil", 4, { emoji: { name: "🗑️" } }), btn("Freilos +", "adm:frei_add", 2, { emoji: { name: "🎟️" } }), btn("Freilos −", "adm:frei_rem", 2, { emoji: { name: "🎟️" } })),
+      row(btn("Neuer Cup", "adm:neu", 3, { emoji: { name: "🆕" } }), btn("Cup abbrechen", "adm:abbrechen", 4, { emoji: { name: "🛑" } }), btn("Testspiele ausspielen", "adm:weiter", 2, { emoji: { name: "⏭️" } })),
+      row({ type: 3, custom_id: "adm:testcup", placeholder: "🧪 Test-Cup starten …", options: [
+        { label: "8 Spieler · Gruppen → Halbfinale", value: "8" },
+        { label: "12 Spieler · Liga → Viertelfinale", value: "12" },
+        { label: "16 Spieler · Gruppen → Viertelfinale", value: "16" },
+        { label: "20 Spieler · Liga → Viertelfinale", value: "20" },
+      ] }),
+      row(btn("Panels aktualisieren", "adm:panels", 2, { emoji: { name: "🔄" } }), btn("Rechte setzen", "adm:rechte", 2, { emoji: { name: "🔐" } }), btn("Rollen-Check", "adm:rollen", 2, { emoji: { name: "🔁" } }), btn("Status", "adm:status", 2, { emoji: { name: "📊" } })),
+    ],
+  };
+}
+
+export function adminModal(kind) {
+  const f = (id, label, req = true, ph = "", style = 1) => row({ type: 4, custom_id: id, label, style, required: req, placeholder: ph || undefined, max_length: 100 });
+  const M = {
+    ergebnis: ["Ergebnis festlegen", [f("spiel", "Spiel-Nr.", true, "z. B. 7"), f("heim", "Tore Heim", true, "z. B. 2"), f("gast", "Tore Gast", true, "z. B. 1"), f("elfmeter", "Elfmeterschießen (nur K.-o.)", false, "z. B. 4:3")]],
+    abmelden: ["Spieler abmelden", [f("spieler", "EA-ID", true, "genau wie in der Liste")]],
+    profil: ["Profil löschen", [f("spieler", "EA-ID", true, "genau wie in der Spielerübersicht")]],
+    neu: ["Neuen Cup anlegen", [f("name", "Name", false, "Ultimate Team Cup"), f("anpfiff", "Anpfiff (TT.MM.JJJJ HH:MM)", true, "02.11.2026 20:00")]],
+  };
+  const [title, comps] = M[kind];
+  return { type: 9, data: { custom_id: "adm_m:" + kind, title, components: comps } };
+}
+
 // ---------- Hall of Fame (Kopf) ----------
 export function hofHeader() {
   return {

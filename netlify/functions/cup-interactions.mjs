@@ -41,6 +41,37 @@ function background(i, context, work, { update = false } = {}) {
 }
 const later = (context, fn) => { const p = Promise.resolve().then(fn).catch((e) => console.error(e)); if (context?.waitUntil) context.waitUntil(p.then(() => processQueue(4000))); return p; };
 
+// ---------- Admin-Panel ----------
+/** Aus einem Button einen /ut-admin-Befehl machen (gleiche Logik wie die Slash-Befehle) */
+const asAdminCmd = (i, sub, options = [], channelId) => ({ ...i, channel_id: channelId || i.channel_id, type: 2, data: { name: "ut-admin", options: [{ type: 1, name: sub, options }] } });
+const asSetupCmd = (i, sub) => ({ ...i, type: 2, data: { name: "ut-einrichten", options: [{ type: 1, name: sub, options: [] }] } });
+
+async function adminPanelAction(i, context, cfg, act) {
+  if (!isAdmin(i, cfg)) return eph("⛔ Das Admin-Panel darf nur die Turnierleitung benutzen.");
+  const t = await F.currentCup();
+  later(context, () => F.refreshAdminPanel());
+  const needSignup = () => { if (!t || t.status !== "anmeldung") throw new Error("Gerade ist keine Anmeldung offen."); return t.channelId; };
+  switch (act) {
+    case "schluss": return admin(asAdminCmd(i, "anmeldeschluss", [], needSignup()), context, cfg);
+    case "checkin": return admin(asAdminCmd(i, "checkin-ende", [], t?.channelId), context, cfg);
+    case "spiele": return admin(asAdminCmd(i, "spiele", [], t?.channelId), context, cfg);
+    case "frei_add": return admin(asAdminCmd(i, "freilos-hinzufügen", [], needSignup()), context, cfg);
+    case "frei_rem": return admin(asAdminCmd(i, "freilos-entfernen", [], needSignup()), context, cfg);
+    case "weiter": return admin(asAdminCmd(i, "testcup-weiter", [], t?.channelId), context, cfg);
+    case "rollen": return admin(asAdminCmd(i, "rollen-check"), context, cfg);
+    case "ergebnis": case "abmelden": case "profil": case "neu": return V.adminModal(act);
+    case "abbrechen":
+      if (!t) return eph("Gerade läuft kein Cup.");
+      return eph(`🛑 **${V.esc(t.name)}** wirklich abbrechen? Alle Turnier-Rollen werden entfernt.`, { components: [{ type: 1, components: [{ type: 2, style: 4, label: "Ja, abbrechen", custom_id: "adm:abbrechen_ok" }] }] });
+    case "abbrechen_ok": return admin(asAdminCmd(i, "abbrechen", [], t?.channelId), context, cfg);
+    case "testcup": return admin(asAdminCmd(i, "testcup-start", [{ name: "teams", value: Number(i.data.values?.[0] || 8) }]), context, cfg);
+    case "panels": return setup(asSetupCmd(i, "panels"), context, cfg);
+    case "rechte": return setup(asSetupCmd(i, "rechte"), context, cfg);
+    case "status": return setup(asSetupCmd(i, "status"), context, cfg);
+  }
+  return eph("Unbekannte Aktion.");
+}
+
 /** Spieler anhand der EA-ID finden (Groß/Kleinschreibung egal) */
 async function findPlayer(raw) {
   const q = String(raw || "").trim().toLowerCase();
@@ -382,6 +413,9 @@ async function component(i, context) {
   const cfg = await getConfig();
   const id = i.data.custom_id, uid = uidOf(i);
 
+  // --- Admin-Panel ---
+  if (id.startsWith("adm:")) return adminPanelAction(i, context, cfg, id.slice(4));
+
   // --- Trophäenhalle ---
   if (id === "stats_me") return eph(await (await import("../cup/trophies.mjs")).myStats(uid));
 
@@ -530,6 +564,30 @@ async function modal(i, context) {
   const cfg = await getConfig();
   const id = i.data.custom_id, uid = uidOf(i), v = modalValues(i);
 
+  if (id.startsWith("adm_m:")) {
+    if (!isAdmin(i, cfg)) return eph("Das darf nur die Turnierleitung.");
+    const kind = id.slice(6);
+    const t = await F.currentCup();
+    later(context, () => F.refreshAdminPanel());
+    if (kind === "ergebnis") {
+      const n = (x) => (String(x ?? "").trim() === "" ? null : Number(String(x).trim()));
+      if (![n(v.spiel), n(v.heim), n(v.gast)].every((x) => Number.isInteger(x) && x >= 0)) return eph("Bitte Spiel-Nr. und Tore als Zahlen eintragen.");
+      const o = [{ name: "spiel", value: n(v.spiel) }, { name: "heim", value: n(v.heim) }, { name: "gast", value: n(v.gast) }];
+      if (String(v.elfmeter || "").trim()) o.push({ name: "elfmeter", value: String(v.elfmeter).trim() });
+      return admin(asAdminCmd(i, "ergebnis", o, t?.channelId), context, cfg);
+    }
+    if (kind === "abmelden") {
+      if (!t) return eph("Gerade gibt es keine Anmeldeliste.");
+      return admin(asAdminCmd(i, "abmelden", [{ name: "spieler", value: v.spieler }], t.channelId), context, cfg);
+    }
+    if (kind === "profil") return admin(asAdminCmd(i, "profil-löschen", [{ name: "spieler", value: v.spieler }]), context, cfg);
+    if (kind === "neu") {
+      const ch = cfg.channels.signup || i.channel_id;
+      return manualCup({ ...i, channel_id: ch, type: 2, data: { name: "ut-turnier", options: [{ name: "name", value: String(v.name || "").trim() || "Ultimate Team Cup" }, { name: "anpfiff", value: String(v.anpfiff || "").trim() }] } }, context);
+    }
+    return eph("Unbekannte Aktion.");
+  }
+
   if (id.startsWith("reg_ea:")) {
     const pf = id.split(":")[1];
     if (!PLATFORMS[pf]) return reply(i, { content: "Unbekannte Plattform – bitte neu starten.", components: [] });
@@ -545,10 +603,9 @@ async function modal(i, context) {
     if (result === "schon") return reply(i, { content: "Du bist bereits registriert.", components: [] });
     later(context, async () => {
       await enqueue([{ u: uid, add: [cfg.roles.manager], why: "Registriert" }]);
-      await setNick(uid, nickFor(baseNameOf(i.member), "manager", ea));
       await F.refreshRegPanel(); await F.refreshOverview();
     });
-    return reply(i, { content: `✅ **Registriert!** Willkommen beim Ultimate Team Cup, <@${uid}>.\nEA-ID: \`${ea}\` · Plattform: ${PLATFORMS[pf].icon} ${PLATFORMS[pf].short}\nDein Name auf dem Server: **${nickFor(baseNameOf(i.member), "manager", ea)}**\n\nJetzt kannst du dich in den Tageskanälen zum Cup anmelden.`, embeds: [], components: [] });
+    return reply(i, { content: `✅ **Registriert!** Willkommen beim Ultimate Team Cup, <@${uid}>.\nEA-ID: \`${ea}\` · Plattform: ${PLATFORMS[pf].icon} ${PLATFORMS[pf].short}\n\nJetzt kannst du dich in den Tageskanälen zum Cup anmelden.`, embeds: [], components: [] });
   }
 
   if (id.startsWith("ban_m:")) {
@@ -571,7 +628,6 @@ async function modal(i, context) {
     if (result === "vergeben") return reply(i, { content: `❌ Die EA-ID **${V.esc(ea)}** ist schon registriert.` });
     if (result !== "ok") return reply(i, { content: "Dein Profil wurde nicht gefunden.", embeds: [], components: [] });
     later(context, async () => {
-      await setNick(uid, nickFor(value[ea].managerBase || baseNameOf(i.member), "manager", ea));
       await (await import("../cup/trophies.mjs")).renameClub?.(mine.club, ea);
       await F.refreshOverview();
     });

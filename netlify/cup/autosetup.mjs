@@ -42,6 +42,7 @@ const PLAN = [
   { key: "hof", name: "🏆・" + fancy("UT-Hall-of-Fame"), cat: "cup", prof: "public" },
   { key: "trophy", name: "🏅・" + fancy("UT-Trophaeenhalle"), cat: "cup", prof: "public" },
   { key: "log", name: "📢・" + fancy("UT-Turnierleitung"), cat: "cup", prof: "staff" },
+  { key: "panel", name: "🛠️・" + fancy("UT-Admin-Panel"), cat: "cup", prof: "staff" },
   ...GROUP_NAMES.flatMap((g) => [
     { key: "g" + g, name: "⚽・" + fancy("UT-Gruppe-" + g), cat: "groups", prof: "group:" + g },
     { key: "r" + g, name: "📋・" + fancy("UT-" + g + "-Ergebnisse"), cat: "groups", prof: "groupres:" + g },
@@ -64,7 +65,7 @@ export function detectKey(rawName) {
   if (n.includes("kophase")) return "ko";
   const day = DAYS.findIndex((d) => n === d.toLowerCase());
   if (day >= 0) return "day" + (day + 1);
-  const map = [["turnierchat", "chat"], ["anmeldung", "signup"], ["benachrichtigung", "notify"], ["regelwerk", "rules"], ["registrieren", "reg"], ["meinprofil", "team"], ["spieleruebersicht", "over"], ["livespielplan", "live"], ["halloffame", "hof"], ["trophaeen", "trophy"], ["sperrliste", "ban"], ["turnierleitung", "log"]];
+  const map = [["adminpanel", "panel"], ["turnierchat", "chat"], ["anmeldung", "signup"], ["benachrichtigung", "notify"], ["regelwerk", "rules"], ["registrieren", "reg"], ["meinprofil", "team"], ["spieleruebersicht", "over"], ["livespielplan", "live"], ["halloffame", "hof"], ["trophaeen", "trophy"], ["sperrliste", "ban"], ["turnierleitung", "log"]];
   for (const [kw, key] of map) if (n.includes(kw)) return key;
   if (n === "regeln") return "rules";
   if (n === "admin") return "admin";
@@ -197,7 +198,7 @@ export async function processSetupJobs(budgetMs = 8000) {
     if (job.k === "zeit") await setDay(job.day, job.ch, job.kickoff);
     if (job.k === "rename") ok = !!(await discord(`/channels/${job.ch}`, "PATCH", { name: job.name }, { reason: "Schrift vereinheitlicht" }));
     if (job.k === "panels") {
-      await refreshRulesPanel(); await refreshRegPanel(); await refreshTeamPanel(); await refreshOverview(); await refreshBanPanel();
+      await refreshRulesPanel(); await refreshRegPanel(); await refreshTeamPanel(); await refreshOverview(); await refreshBanPanel(); await (await import("./flow.mjs")).refreshAdminPanel();
       await (await import("./trophies.mjs")).refreshTrophyPanel();
       await (await import("./flow.mjs")).refreshHofHeader();
     }
@@ -243,7 +244,7 @@ export async function resetBot(scope = "setup") {
   const cfg = await getConfig();
   const panels = (await get("panels")) || {};
   const ch = cfg.channels || {};
-  const msgs = [[ch.reg, panels.reg], [ch.team, panels.team], [ch.rules, panels.rules], [ch.ban, panels.ban], [ch.trophy, panels.trophy], [ch.hof, panels.hofHead], ...(panels.over || []).map((id) => [ch.over, id])];
+  const msgs = [[ch.reg, panels.reg], [ch.team, panels.team], [ch.rules, panels.rules], [ch.ban, panels.ban], [ch.trophy, panels.trophy], [ch.hof, panels.hofHead], [ch.panel, panels.admin], ...(panels.over || []).map((id) => [ch.over, id])];
   let deleted = 0;
   for (const [c, id] of msgs) if (c && id && (await deleteMessage(c, id))) deleted++;
   for (const k of ["config", "panels", "zeitplan", "setupjobs"]) await del(k);
@@ -254,8 +255,7 @@ export async function resetBot(scope = "setup") {
     const started = Date.now();
     for (const c of Object.values(clubs)) {
       if (Date.now() - started > 12000) break; // Zeitlimit – restliche Spitznamen bleiben
-      if (c.manager && (await setNick(c.manager, c.managerOrigNick ?? null))) res.nicks++;
-      for (const x of coList(c)) if (await setNick(x.id, x.orig ?? null)) res.nicks++;
+      // Spitznamen werden vom UT Cup nicht verändert – nichts zurückzusetzen
     }
     for (const k of ["clubs", "stats", "bans", "rules", "mreq", "managers", "knownMembers", "rolequeue", "autodelete", "daily", "active"]) await del(k);
     for (const k of await keys("t:")) await del(k);

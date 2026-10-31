@@ -61,6 +61,7 @@ export const BASE_CHANNEL_TYPES = {
   reg: "Spieler-registrieren",
   signup: "Anmeldung (Cup-Listen)",
   chat: "Turnier-Chat",
+  panel: "Admin-Panel",
   team: "Mein-Profil",
   over: "Spielerübersicht",
   live: "Live-Spielplan",

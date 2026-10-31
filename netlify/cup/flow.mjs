@@ -44,6 +44,13 @@ export async function refreshOverview() {
   if (JSON.stringify(ids) !== JSON.stringify(p.over)) await savePanel("over", ids);
 }
 
+export async function refreshAdminPanel() {
+  const cfg = await getConfig(); if (!cfg.channels.panel) return;
+  const p = await panels();
+  const id = await upsertMessage(cfg.channels.panel, p.admin, V.adminPanel(await currentCup()));
+  if (id && id !== p.admin) await savePanel("admin", id);
+}
+
 export async function refreshHofHeader() {
   const cfg = await getConfig(); if (!cfg.channels.hof) return;
   const p = await panels();
@@ -86,10 +93,8 @@ export async function releaseClub(name, { reason = "" } = {}) {
     return { manager: c.manager, managerOrig: c.managerOrigNick ?? null, data: c };
   });
   if (!result) return null;
-  if (result.manager) {
-    await setNick(result.manager, result.managerOrig);
-    await enqueue([{ u: result.manager, rem: [cfg.roles.manager], why: reason || "Profil gelöscht" }]);
-  }
+  // Der Spitzname wird nicht angefasst – nur die Rolle „UT Spieler“ entfernen
+  if (result.manager) await enqueue([{ u: result.manager, rem: [cfg.roles.manager], why: reason || "Profil gelöscht" }]);
   await Promise.all([refreshRegPanel(), refreshOverview()]);
   return result;
 }
@@ -99,6 +104,14 @@ const mutateClubsSafe = (fn) => mutate("clubs", fn, { initial: {} });
 export async function activeTournament() {
   const ch = await get("active");
   return ch ? await get(tKey(ch)) : null;
+}
+
+/** Für das Admin-Panel: laufender Cup, sonst die nächste offene Anmeldeliste */
+export async function currentCup() {
+  const a = await activeTournament();
+  if (a && !["fertig", "abgesagt", "geloescht"].includes(a.status)) return a;
+  const open = (await allTournaments()).filter((t) => t.status === "anmeldung").sort((x, y) => (x.times?.kickoff || 0) - (y.times?.kickoff || 0));
+  return open[0] || null;
 }
 
 export async function launchTournament({ channelId, name, times, day, date }, { replace = false } = {}) {
