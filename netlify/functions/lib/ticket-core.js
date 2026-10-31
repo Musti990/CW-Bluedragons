@@ -23,7 +23,11 @@ const INFO_FIELDS = INFO_PARTS.flat();
 const TESTER_QUESTIONS = INFO_FIELDS.map((f) => `${f.label}:`);
 const INFO_CHANNEL_ID = '1565800045670830112'; // ausgefüllte Infoblätter landen zusätzlich hier
 const ARCHIVE_CHANNEL = 'ticket-archiv'; // hier landen geschlossene Tickets
-const TICKET_CATEGORY = 'Tickets'; // Kategorie für die Ticket-Kanäle (wird genutzt, wenn es sie gibt)
+// Kategorie für die Ticket-Kanäle: „~~~~~~ 🔱 𝑽𝑴 - 𝑩𝒆𝒓𝒆𝒊𝒄𝒉  🔱~~~~~“
+// Erkannt wird sie am Text „VM-Bereich“ (Schrift, Emojis und Zeichen drumherum egal).
+// Alternativ fest per Netlify-Variable TICKET_CATEGORY_ID.
+const TICKET_CATEGORY_KEYS = ['vmbereich', 'tickets'];
+const normName = (n) => String(n || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9äöü]/g, '');
 const ADMIN_ROLE_NAMES = ['owner', 'admin', 'head vm', 'kapitän', 'kapitan', 'captain', 'vorstand', 'moderator'];
 
 const VIEW = 1n << 10n;
@@ -169,7 +173,9 @@ async function openTesterTicket(interaction, roles) {
 
   const channelsRes = await api(`/guilds/${guildId}/channels`);
   const channels = channelsRes.ok ? await channelsRes.json() : [];
-  const category = channels.find((c) => c.type === 4 && c.name.toLowerCase() === TICKET_CATEGORY.toLowerCase());
+  const category =
+    channels.find((c) => c.type === 4 && c.id === process.env.TICKET_CATEGORY_ID) ||
+    TICKET_CATEGORY_KEYS.map((k) => channels.find((c) => c.type === 4 && normName(c.name).includes(k))).find(Boolean);
 
   const overwrites = [
     { id: guildId, type: 0, deny: VIEW.toString() }, // @everyone sieht nichts

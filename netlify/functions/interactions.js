@@ -10,7 +10,7 @@ const {
 const { sessionStore, getSession, saveSession, newSession } = require('./lib/session-core');
 const { INFO_PARTS, openTesterTicket, archiveAndCloseTicket, getInfo, buildInfoModal, saveInfoPart, infoEmbed, postInfoToChannel } = require('./lib/ticket-core');
 const {
-  lineupStore, lineupKey, emptyLineup, getLineup, saveLineup,
+  lineupStore, lineupKey, emptyLineup, getLineup, saveLineup, requestLineupPublish, parseKickoff,
   switchFormation, autoFill, lineupEmbed, lineupComponents, requestLineupRefresh, FORMATION_NAMES,
 } = require('./lib/lineup-core');
 const { getGroups, setGroups, POS_GROUP,
@@ -958,6 +958,26 @@ async function handleLineupComponent(interaction) {
     return luUpd(await applyAndRefresh({ ...lineup, players: {} }, '🧹 Alle Positionen geleert.'));
   }
 
+  // 📤 Posten: Kanal wählen → Uhrzeit/Datum/Info eintragen → Bild wird in den Kanal gepostet
+  if (action === 'send') {
+    const filled = Object.values(lineup.players || {}).filter(Boolean).length;
+    return luEph(`**📤 Aufstellung posten**${filled ? '' : '\n⚠️ Es ist noch niemand eingesetzt.'}\nIn welchen Kanal soll sie?`, {
+      components: [{ type: 1, components: [{ type: 8, custom_id: `lineup:sendch:${lineup.team}`, placeholder: 'Kanal auswählen…', channel_types: [0, 5], min_values: 1, max_values: 1 }] }],
+    });
+  }
+  if (action === 'sendch') {
+    const channelId = interaction.data.values?.[0];
+    return json(200, { type: 9, data: {
+      custom_id: `lineup:sendmodal:${lineup.team}:${channelId}`,
+      title: 'Aufstellung posten',
+      components: [
+        { type: 1, components: [{ type: 4, custom_id: 'zeit', style: 1, label: 'Anstoß-Uhrzeit (optional, z. B. 20:30)', required: false, max_length: 5, placeholder: '20:30' }] },
+        { type: 1, components: [{ type: 4, custom_id: 'datum', style: 1, label: 'Datum (optional, leer = heute)', required: false, max_length: 10, placeholder: '02.11.' }] },
+        { type: 1, components: [{ type: 4, custom_id: 'info', style: 2, label: 'Info (optional)', required: false, max_length: 300, placeholder: 'z. B. Treffpunkt 20:15 in der Lobby' }] },
+      ],
+    } });
+  }
+
   // Position gewählt -> kleines Menü: Mitglied anklicken oder Aushilfe eintippen / leeren
   if (action === 'slot') {
     const slotKey = interaction.data.values[0];
@@ -1002,6 +1022,22 @@ async function handleLineupComponent(interaction) {
   }
 
   return luEph('Unbekannte Aktion.');
+}
+
+async function handleLineupSendModal(interaction) {
+  if (!(await isKaderAdmin(interaction))) return luEph('⛔ Nur Admins können die Aufstellung posten.');
+  const [, , , channelId] = interaction.data.custom_id.split(':');
+  const val = (id) => { for (const r of interaction.data.components || []) for (const c of r.components || []) if (c.custom_id === id) return String(c.value || '').trim(); return ''; };
+  const zeit = val('zeit'), datum = val('datum'), info = val('info');
+  let kickoff = null;
+  if (zeit) {
+    kickoff = parseKickoff(zeit, datum);
+    if (!kickoff) return luEph('❌ Die Uhrzeit bitte so eintragen: **20:30** (Datum optional: **02.11.**)');
+  }
+  const key = lineupKey(interaction);
+  if (!(await getLineup(lineupStore(), key))) return luEph('Diese Aufstellung ist abgelaufen. Starte sie neu.');
+  await requestLineupPublish({ key, channelId, kickoff, note: info || null });
+  return luEph(`📤 Wird gepostet in <#${channelId}>${kickoff ? ` · Anstoß <t:${kickoff}:F>` : ''} – das Bild erscheint in ein paar Sekunden.`);
 }
 
 async function handleLineupModal(interaction) {
@@ -1061,6 +1097,17 @@ async function handleTicketButton(interaction) {
   if (!role) return eph('⚠️ Es gibt keine Rolle **Tester** auf dem Server.');
   const put = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${applicantId}/roles/${role.id}`, { method: 'PUT', headers: authHeader });
   if (!put.ok) return eph('⚠️ Rolle konnte nicht vergeben werden. Die Bot-Rolle muss über **Tester** stehen.');
+  // Zusätzlich die Rolle „Dragons Spieler“ (Schrift/Emojis egal, nie die Bot-Rolle; oder fest per ACCEPT_ROLE_ID)
+  const norm = (n) => String(n || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const bdRole = roles.find((r) => r.id === process.env.ACCEPT_ROLE_ID)
+    || roles.find((r) => !r.managed && norm(r.name) === 'dragonsspieler')
+    || roles.find((r) => !r.managed && norm(r.name).includes('dragonsspieler'))
+    || roles.find((r) => !r.managed && norm(r.name).includes('bluedragons'));
+  let bdInfo = '';
+  if (bdRole) {
+    const r2 = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${applicantId}/roles/${bdRole.id}`, { method: 'PUT', headers: authHeader });
+    bdInfo = r2.ok ? ` + Rolle **${bdRole.name}**` : ` (⚠️ **${bdRole.name}** konnte nicht vergeben werden – Bot-Rolle muss darüber stehen)`;
+  }
 
   const memberRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${applicantId}`, { headers: authHeader });
   if (memberRes.ok) {
@@ -1073,7 +1120,7 @@ async function handleTicketButton(interaction) {
   }
 
   embed.color = 0x248046;
-  embed.fields = [{ name: 'Status', value: `✅ Angenommen von **${adminName}** – <@${applicantId}> ist jetzt Tester! 🧪` }];
+  embed.fields = [{ name: 'Status', value: `✅ Angenommen von **${adminName}** – <@${applicantId}> ist jetzt Tester! 🧪${bdInfo}` }];
   return json(200, { type: 7, data: { content: `<@${applicantId}>`, embeds: [embed], components: closeRow } });
 }
 
@@ -1289,6 +1336,10 @@ exports.handler = async (event) => {
 
   if (interaction.type === 5 && interaction.data.custom_id.startsWith('kader:nummodal:')) {
     return handleKaderModal(interaction);
+  }
+
+  if (interaction.type === 5 && interaction.data.custom_id.startsWith('lineup:sendmodal:')) {
+    return handleLineupSendModal(interaction);
   }
 
   if (interaction.type === 5 && interaction.data.custom_id.startsWith('lineup:guestmodal:')) {

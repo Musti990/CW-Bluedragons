@@ -133,6 +133,7 @@ function actionRow(lineup) {
     components: [
       { type: 2, style: 1, label: 'Automatisch füllen', emoji: { name: '✨' }, custom_id: `lineup:auto:${lineup.team}` },
       { type: 2, style: 2, label: 'Alle leeren', emoji: { name: '🧹' }, custom_id: `lineup:clear:${lineup.team}` },
+      { type: 2, style: 3, label: 'Posten', emoji: { name: '📤' }, custom_id: `lineup:send:${lineup.team}` },
     ],
   };
 }
@@ -157,7 +158,46 @@ async function requestLineupRefresh(payload) {
   }
 }
 
+// Veröffentlichen anstoßen (Bild rendern + in den gewählten Kanal posten macht lineup-worker)
+async function requestLineupPublish(payload) {
+  const store = lineupStore();
+  await store.setJSON(`publish-${payload.key}`, { ...payload, createdAt: Date.now() });
+  try {
+    await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-worker-secret': process.env.CRON_SECRET || '' },
+      body: JSON.stringify({ ...payload, action: 'publish' }),
+      signal: AbortSignal.timeout(1200),
+    });
+  } catch {
+    // Timeout gewollt
+  }
+}
+
+/** „20:30“ + optional „02.11.“ → Unix-Zeit (Wiener Zeit). Ohne Datum: heute, bzw. morgen, wenn die Uhrzeit schon vorbei ist. */
+function parseKickoff(timeRaw, dateRaw) {
+  const tm = String(timeRaw || '').trim().match(/^(\d{1,2})[:.](\d{2})$/);
+  if (!tm) return null;
+  const hh = Number(tm[1]), mm = Number(tm[2]);
+  if (hh > 23 || mm > 59) return null;
+  const now = new Date();
+  const vienna = (d) => Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Vienna', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(d).map((p) => [p.type, p.value]));
+  const v = vienna(now);
+  let y = Number(v.year), mo = Number(v.month), d = Number(v.day);
+  const dm = String(dateRaw || '').trim().match(/^(\d{1,2})\.(\d{1,2})\.?(\d{2,4})?$/);
+  if (dm) { d = Number(dm[1]); mo = Number(dm[2]); if (dm[3]) y = Number(dm[3].length === 2 ? '20' + dm[3] : dm[3]); }
+  // Wiener Uhrzeit → UTC: Versatz für dieses Datum bestimmen
+  const guess = Date.UTC(y, mo - 1, d, hh, mm);
+  const g = vienna(new Date(guess));
+  const offset = Date.UTC(Number(g.year), Number(g.month) - 1, Number(g.day), Number(g.hour) % 24, Number(g.minute)) - guess;
+  let ts = guess - offset;
+  if (!dm && ts < now.getTime() - 60000) ts += 24 * 3600 * 1000;
+  return Math.floor(ts / 1000);
+}
+
 module.exports = {
+  requestLineupPublish,
+  parseKickoff,
   FORMATION_NAMES,
   DEFAULT_FORMATION,
   lineupStore,

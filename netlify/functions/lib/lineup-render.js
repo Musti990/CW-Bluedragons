@@ -74,6 +74,33 @@ async function refreshLineup({ key }) {
   return true;
 }
 
+// Fertige Aufstellung als Bild in einen Kanal posten
+async function publishLineup({ key, channelId, kickoff, note }) {
+  const store = lineupStore();
+  const lineup = await getLineup(store, key);
+  await store.delete(`publish-${key}`);
+  if (!lineup) return false;
+  const imageName = `aufstellung-team${lineup.team}.png`;
+  const svg = buildLineupSvg({ teamName: KADER_TEAMS[lineup.team].label, title: lineup.title, formation: lineup.formation, players: lineup.players });
+  const png = await sharp(Buffer.from(svg)).png().toBuffer();
+  let role;
+  try { role = findKaderRole(await getGuildRoles(lineup.guildId), lineup.team); } catch { role = null; }
+  const lines = [];
+  if (kickoff) lines.push(`⏰ **Anstoß:** <t:${kickoff}:F> · <t:${kickoff}:R>`);
+  if (note) lines.push(`📝 ${note}`);
+  const form = new FormData();
+  form.append('payload_json', JSON.stringify({
+    content: role ? `<@&${role.id}>` : '',
+    allowed_mentions: { roles: role ? [role.id] : [] },
+    embeds: [{ color: 0x1f6bff, title: `📋 ${String(lineup.title || 'Aufstellung').toUpperCase()}`, description: lines.join('\n') || undefined, image: { url: `attachment://${imageName}` }, footer: { text: `${KADER_TEAMS[lineup.team].label} · Formation ${lineup.formation}` } }],
+    attachments: [{ id: 0, filename: imageName }],
+  }));
+  form.append('files[0]', new Blob([png], { type: 'image/png' }), imageName);
+  const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, { method: 'POST', headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}` }, body: form });
+  if (!res.ok) throw new Error(`Aufstellung posten fehlgeschlagen: ${res.status} ${await res.text()}`);
+  return true;
+}
+
 async function processPendingLineups() {
   const store = lineupStore();
   const done = [];
@@ -87,6 +114,12 @@ async function processPendingLineups() {
       await store.delete(b.key);
     }
   }
+  const { blobs: pubs } = await store.list({ prefix: 'publish-' }).catch(() => ({ blobs: [] }));
+  for (const b of pubs || []) {
+    const job = await store.get(b.key, { type: 'json' });
+    if (job && Date.now() - job.createdAt < 30 * 60 * 1000) { await publishLineup(job).catch((e) => console.error(e)); done.push(b.key); }
+    else await store.delete(b.key);
+  }
   const { blobs: dirty } = await store.list({ prefix: 'dirty-' }).catch(() => ({ blobs: [] }));
   for (const b of dirty || []) {
     await refreshLineup({ key: b.key.replace('dirty-', '') });
@@ -95,4 +128,4 @@ async function processPendingLineups() {
   return done;
 }
 
-module.exports = { finishLineupPost, refreshLineup, processPendingLineups };
+module.exports = { finishLineupPost, refreshLineup, processPendingLineups, publishLineup };
