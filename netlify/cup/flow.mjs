@@ -47,7 +47,7 @@ export async function refreshOverview() {
 export async function refreshAdminPanel() {
   const cfg = await getConfig(); if (!cfg.channels.panel) return;
   const p = await panels();
-  const id = await upsertMessage(cfg.channels.panel, p.admin, V.adminPanel(await currentCup()));
+  const id = await upsertMessage(cfg.channels.panel, p.admin, V.adminPanel(await currentCup(), cfg.cupMode || "auto"));
   if (id && id !== p.admin) await savePanel("admin", id);
 }
 
@@ -132,6 +132,7 @@ export async function launchTournament({ channelId, name, times, day, date }, { 
   const { result: got } = await mutate("launchlocks", (l) => { const now = Date.now(); for (const [k, at] of Object.entries(l)) if (now - at > 10 * 60000) delete l[k]; if (l[lockKey]) return false; l[lockKey] = now; return true; }, { initial: {} });
   if (!got) { const cur = await get(tKey(channelId)); if (cur) return cur; throw new Error("Die Liste wird gerade schon gepostet."); }
   const t = T.createTournament({ channelId, name, times, day, date });
+  t.mode = (await getConfig()).cupMode || "auto"; // Gruppen oder Liga – im Admin-Panel wählbar
   const msg = await sendMessage(channelId, V.signupPanel(t, await getClubs()));
   if (!msg) {
     await mutate("launchlocks", (l) => { delete l[lockKey]; }, { initial: {} });
@@ -265,11 +266,11 @@ export async function refreshGroupGraphic(t, gName, { fresh: isNew = false } = {
     const pf = (c) => clubs[c]?.platform || null;
     const G = await import("./graphics.mjs");
     const label = t.league ? "Liga" : `Gruppe ${gName}`;
-    const d = (await import("./data.mjs")).FORMATS[t.fmt] || { top: 2, ex: 0 };
+    const d = (await import("./data.mjs")).fmtDef(t.fmt, t.mode) || { top: 2, ex: 0 };
     const rows = T.standings(t, gName).map((r) => ({ name: r.id, platform: pf(r.id), sp: r.sp, s: r.s, u: r.u, n: r.n, td: r.t - r.gt, p: r.p, out: t.out.includes(r.id) }));
     const files = [];
     if (ms.length) files.push({ name: `spieltag-${gName}-${round}.png`, buffer: await G.roundImage({ title: `${label} · Spieltag ${round}`, sub: t.name, matches: ms.map((m) => ({ ...gfxRow(m), hp: pf(m.home), ap: pf(m.away) })) }) });
-    files.push({ name: `tabelle-${gName}.png`, buffer: await G.tableImage({ title: t.league ? "Liga · Tabelle" : `Gruppe ${gName}`, sub: t.name, label: t.league ? "Ligasystem" : `Gruppe ${gName}`, info: t.league ? `K.-o.-Phase: Top ${d.top} → ${T.koRoundName({ koSize: (await import("./data.mjs")).KO_SIZE[t.fmt] }, 1)}` : `K.-o.-Phase: Platz 1${d.top > 1 ? " + 2" : ""}`, rows, qualify: d.top, maybe: d.ex ? 1 : 0 }) });
+    files.push({ name: `tabelle-${gName}.png`, buffer: await G.tableImage({ title: t.league ? "Liga · Tabelle" : `Gruppe ${gName}`, sub: t.name, label: t.league ? "Ligasystem" : `Gruppe ${gName}`, info: t.league ? `K.-o.-Phase: Top ${d.top} → ${T.koRoundName({ koSize: (await import("./data.mjs")).koSizeFor(t.fmt, t.mode) }, 1)}` : `K.-o.-Phase: Platz 1${d.top > 1 ? " + 2" : ""}`, rows, qualify: d.top, maybe: d.ex ? 1 : 0 }) });
     const cur = (await get(tKey(t.channelId)))?.msgs?.gfx?.[gName];
     const payload = { content: `📊 **${label} · Spieltag ${round}**` };
     let id = cur?.id && cur.round === round && !isNew ? cur.id : null;

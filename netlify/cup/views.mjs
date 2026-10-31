@@ -1,6 +1,6 @@
 // Alle Discord-Ansichten (Embeds, Buttons, Formulare). Alle Ränder in Blau.
 import { coIds, isCo, MAX_CO } from "./co.mjs";
-import { durText, BANNER_V, COLOR, PLATFORMS, FORMATS, KO_SIZE, KO_NAME, BAN_REASONS, BAN_DAYS, BAN_DEFAULT_DAYS, VIDEO_LIMIT, VIDEO_WINDOW_MIN, RULES, FREIGABE_MIN, isFreilos, flagOf, platformOf } from "./data.mjs";
+import { fmtDef, koSizeFor, MODE_NAME, durText, BANNER_V, COLOR, PLATFORMS, FORMATS, KO_SIZE, KO_NAME, BAN_REASONS, BAN_DAYS, BAN_DEFAULT_DAYS, VIDEO_LIMIT, VIDEO_WINDOW_MIN, RULES, FREIGABE_MIN, isFreilos, flagOf, platformOf } from "./data.mjs";
 import { fmtOf, nextFmt, standings, currentMatches, winner, koRoundName } from "./tournament.mjs";
 
 const FOOTER = { text: "CW Bluedragons · Ultimate Team Cup" };
@@ -139,26 +139,26 @@ export function overviewMessages(clubs) {
 }
 
 // ---------- Admin-Panel (statt Befehlen) ----------
-export function adminPanel(t) {
+export function adminPanel(t, cupMode = "auto") {
   const st = t ? { anmeldung: "📝 Anmeldung offen", checkin: "✅ Check-in läuft", gruppen: t.league ? "⚽ Ligaphase läuft" : "⚽ Gruppenphase läuft", ko: "⚔️ K.-o.-Phase läuft" }[t.status] || "–" : "Kein Cup aktiv";
   return {
     embeds: [{
       color: COLOR,
       title: "🛠️ ADMIN-PANEL · ULTIMATE TEAM CUP",
-      description: `Alle wichtigen Aktionen per Klick – nur für **Turnierleitung** und Server-Admins.\nAntworten sieht nur, wer klickt.\n\n**Aktueller Cup:** ${t ? `${esc(t.name)} · ${st} · ${t.reg?.length ?? 0} angemeldet` : st}`,
+      description: `Alle wichtigen Aktionen per Klick – nur für **Turnierleitung** und Server-Admins.\nAntworten sieht nur, wer klickt.\n\n**Aktueller Cup:** ${t ? `${esc(t.name)} · ${st} · ${t.reg?.length ?? 0} angemeldet` : st}\n**Modus:** ${MODE_NAME[(t?.mode) || cupMode] || MODE_NAME.auto}${t?.league ? " · läuft als Liga" : t?.groups?.length ? " · läuft mit Gruppen" : ""}`,
       fields: [
-        { name: "⚽ Turnier", value: "Anmeldeschluss · Check-in beenden · offene Spiele · Ergebnis festlegen", inline: false },
+        { name: "⚽ Turnier", value: "Anmeldeschluss · Check-in beenden · offene Spiele · Ergebnis festlegen · Ergebnis bearbeiten", inline: false },
         { name: "👤 Spieler", value: "Spieler abmelden · Profil löschen · Freilos hinzufügen/entfernen", inline: false },
-        { name: "🗓️ Cup & Test", value: "Neuen Cup anlegen · Cup abbrechen · Test-Cup (8/12/16/20) · Testspiele ausspielen", inline: false },
+        { name: "🗓️ Cup & Test", value: "Neuen Cup anlegen · **Modus wählen (Gruppenphase oder Ligasystem)** · Cup abbrechen · Test-Cup (8/12/16/20) · Testspiele ausspielen", inline: false },
         { name: "⚙️ Einrichtung", value: "Panels aktualisieren · Rechte setzen · Rollen-Check · Status", inline: false },
       ],
       thumbnail: { url: `${site()}/blue-dragons-logo.png` },
       footer: { text: "Aktualisiert sich bei jedem Klick · Slash-Befehle funktionieren weiterhin" },
     }],
     components: [
-      row(btn("Anmeldeschluss", "adm:schluss", 1, { emoji: { name: "⏩" } }), btn("Check-in beenden", "adm:checkin", 1, { emoji: { name: "✅" } }), btn("Offene Spiele", "adm:spiele", 2, { emoji: { name: "📋" } }), btn("Ergebnis festlegen", "adm:ergebnis", 3, { emoji: { name: "✏️" } })),
+      row(btn("Anmeldeschluss", "adm:schluss", 1, { emoji: { name: "⏩" } }), btn("Check-in beenden", "adm:checkin", 1, { emoji: { name: "✅" } }), btn("Offene Spiele", "adm:spiele", 2, { emoji: { name: "📋" } }), btn("Ergebnis festlegen", "adm:ergebnis", 3, { emoji: { name: "✏️" } }), btn("Ergebnis bearbeiten", "adm:edit", 3, { emoji: { name: "🔧" } })),
       row(btn("Spieler abmelden", "adm:abmelden", 2, { emoji: { name: "➖" } }), btn("Profil löschen", "adm:profil", 4, { emoji: { name: "🗑️" } }), btn("Freilos +", "adm:frei_add", 2, { emoji: { name: "🎟️" } }), btn("Freilos −", "adm:frei_rem", 2, { emoji: { name: "🎟️" } })),
-      row(btn("Neuer Cup", "adm:neu", 3, { emoji: { name: "🆕" } }), btn("Cup abbrechen", "adm:abbrechen", 4, { emoji: { name: "🛑" } }), btn("Testspiele ausspielen", "adm:weiter", 2, { emoji: { name: "⏭️" } })),
+      row(btn("Neuer Cup", "adm:neu", 3, { emoji: { name: "🆕" } }), btn("Modus: Gruppen/Liga", "adm:mode", 1, { emoji: { name: "🏟️" } }), btn("Cup abbrechen", "adm:abbrechen", 4, { emoji: { name: "🛑" } }), btn("Testspiele ausspielen", "adm:weiter", 2, { emoji: { name: "⏭️" } })),
       row({ type: 3, custom_id: "adm:testcup", placeholder: "🧪 Test-Cup starten …", options: [
         { label: "8 Spieler · Gruppen → Halbfinale", value: "8" },
         { label: "12 Spieler · Liga → Viertelfinale", value: "12" },
@@ -168,6 +168,35 @@ export function adminPanel(t) {
       row(btn("Panels aktualisieren", "adm:panels", 2, { emoji: { name: "🔄" } }), btn("Rechte setzen", "adm:rechte", 2, { emoji: { name: "🔐" } }), btn("Rollen-Check", "adm:rollen", 2, { emoji: { name: "🔁" } }), btn("Status", "adm:status", 2, { emoji: { name: "📊" } })),
     ],
   };
+}
+
+export function modePicker(cur) {
+  return {
+    content: "**🏟️ Modus wählen** – gilt für den aktuellen Cup (solange die Anmeldung offen ist) und für alle neuen Cups.",
+    components: [row({ type: 3, custom_id: "adm:mode_set", placeholder: "Modus auswählen", options: [
+      { label: "Automatisch", description: "12er und 20er als Liga, alle anderen mit Gruppen", value: "auto", emoji: { name: "🤖" }, default: cur === "auto" },
+      { label: "Immer Gruppenphase", description: "Gruppen + K.-o. bei jeder Größe", value: "gruppen", emoji: { name: "⚽" }, default: cur === "gruppen" },
+      { label: "Immer Ligasystem", description: "Eine Tabelle, 4 Spieltage · ab 12: Top 8, sonst Top 4", value: "liga", emoji: { name: "🏟️" }, default: cur === "liga" },
+    ] })],
+  };
+}
+
+export function editPicker(t) {
+  const done = t.matches.filter((m) => m.status === "fertig" && !isFreilos(m.home) && !isFreilos(m.away)).sort((a, b) => b.id - a.id).slice(0, 25);
+  if (!done.length) return { content: "Es gibt noch kein fertiges Spiel zum Bearbeiten.", components: [] };
+  const where = (m) => (m.phase === "gruppe" ? `${t.league ? "Liga" : "Gruppe " + m.group} · Spieltag ${m.round}` : (m.final ? (m.p3 ? "Spiel um Platz 3" : "Finale") : `K.-o. Runde ${m.round}`));
+  return {
+    content: "**🔧 Welches Ergebnis bearbeiten?** (die letzten 25 fertigen Spiele)",
+    components: [row({ type: 3, custom_id: "adm:edit_pick", placeholder: "Spiel auswählen", options: done.map((m) => ({ label: `#${m.id} ${m.home} ${m.h}:${m.a} ${m.away}${m.pen ? ` (${m.pen[0]}:${m.pen[1]} i.E.)` : ""}`.slice(0, 100), description: where(m).slice(0, 100), value: String(m.id) })) })],
+  };
+}
+
+export function editModal(m) {
+  const f = (id, label, value, req = true) => row({ type: 4, custom_id: id, label, style: 1, required: req, max_length: 10, value: value === undefined || value === null ? undefined : String(value) });
+  return { type: 9, data: { custom_id: `adm_m:edit:${m.id}`, title: `#${m.id} bearbeiten`.slice(0, 45), components: [
+    f("heim", `Tore ${m.home}`.slice(0, 45), m.h), f("gast", `Tore ${m.away}`.slice(0, 45), m.a),
+    ...(m.phase === "ko" ? [f("elfmeter", "Elfmeterschießen (nur bei Unentschieden)", m.pen ? `${m.pen[0]}:${m.pen[1]}` : undefined, false)] : []),
+  ] } };
 }
 
 export function adminModal(kind) {
@@ -196,7 +225,7 @@ export function hofHeader() {
 
 // ---------- Anmeldeliste ----------
 const SQ = { g: "🟩", y: "🟨", x: "⬛" };
-function formatBlock(n, closed) {
+function formatBlock(n, closed, mode) {
   const f = fmtOf(n), next = nextFmt(n);
   const prog = (from, to) => {
     if (!to) return "Maximales Format erreicht – weitere Spieler kommen auf die Warteliste.";
@@ -204,10 +233,10 @@ function formatBlock(n, closed) {
     return `${"▰".repeat(fill)}${"▱".repeat(10 - fill)} noch **${to - n} Spieler** bis zum **${to}er**`;
   };
   if (!f) return `**⚠️ Noch kein Format**\nMindestens **8 Spieler** nötig, damit der Cup stattfindet.\n${prog(0, 8)}`;
-  const d = FORMATS[f], mixed = new Set(d.g).size > 1;
+  const d = fmtDef(f, mode), mixed = new Set(d.g).size > 1;
   if (d.league) {
     const bar = Array.from({ length: f }, (_, p) => (p < d.top ? SQ.g : SQ.x)).join("");
-    return `**🏟️ Format: ${f}er · Ligasystem**\n**Eine Tabelle** · **${d.rounds} Spieltage** gegen zufällige Gegner  ·  **Weiter:** Top ${d.top}  ·  **K.-o. ab:** ${KO_NAME[KO_SIZE[f]]}\n${bar}\n${SQ.g} **Platz 1–${d.top}** ${SQ.x} **raus**${closed ? "" : "\n" + prog(f, next)}`;
+    return `**🏟️ Format: ${f}er · Ligasystem**\n**Eine Tabelle** · **${d.rounds} Spieltage** gegen zufällige Gegner  ·  **Weiter:** Top ${d.top}  ·  **K.-o. ab:** ${KO_NAME[koSizeFor(f, mode)]}\n${bar}\n${SQ.g} **Platz 1–${d.top}** ${SQ.x} **raus**${closed ? "" : "\n" + prog(f, next)}`;
   }
   const grid = d.g.map((s, k) => `\`${"ABCDEFGH"[k]}\` ${Array.from({ length: s }, (_, p) => (p < d.top ? SQ.g : p === d.top && d.ex ? SQ.y : SQ.x)).join("")}`);
   const rows = [];
@@ -260,7 +289,7 @@ export function signupPanel(t, clubs = {}) {
       gallery(`${site()}/cup-banner-anmeldung.jpg?v=${BANNER_V}`),
       txt(head.join("\n")),
       line(),
-      txt(formatBlock(closed ? t.playing.length || n : n, closed).replace(/^\*\*🏟️ Format: (\d+)er\*\*/, "### 🏟️ Turnierplan: $1er-Format").replace(/^\*\*⚠️ Noch kein Format\*\*/, "### ⚠️ Noch kein Format")),
+      txt(formatBlock(closed ? t.playing.length || n : n, closed, t.mode).replace(/^\*\*🏟️ Format: (\d+)er\*\*/, "### 🏟️ Turnierplan: $1er-Format").replace(/^\*\*⚠️ Noch kein Format\*\*/, "### ⚠️ Noch kein Format")),
       line(),
       txt(`### ⏰ Ablauf\n${hhmm(times.close)} Anmeldeschluss · ${hhmm(times.close)} Auslosung · ${hhmm(times.checkinEnd)} Check-in-Ende · ${hhmm(times.kickoff)} Anpfiff`),
       line(),
@@ -272,13 +301,13 @@ export function signupPanel(t, clubs = {}) {
 }
 
 export function drawPost(t) {
-  const d = FORMATS[t.fmt];
+  const d = fmtDef(t.fmt, t.mode);
   if (d.league) {
     const list = t.groups[0].teams.map((c) => `${flagOf(c)} ${esc(c)}`);
     const half = Math.ceil(list.length / 2);
     return {
       content: `🔒 **Anmeldung geschlossen – ${t.fmt}er-Format · Ligasystem.** Check-in läuft jetzt bis ${hhmm(t.times.checkinEnd)} im Liga-Kanal.${t.wait.length ? ` ${t.wait.length} ${t.wait.length === 1 ? "Spieler steht" : "Spieler stehen"} auf der Warteliste und checkt oben im Anmelde-Post ein.` : ""}`,
-      embeds: [{ color: COLOR, title: `⭐ Auslosung · ${t.fmt}er-Format · Liga`, description: `**${d.rounds} Spieltage** gegen zufällige Gegner (nie zweimal derselbe) · **Top ${d.top} → ${KO_NAME[KO_SIZE[t.fmt]]}**`, fields: [{ name: "Teilnehmer", value: list.slice(0, half).join("\n"), inline: true }, { name: "\u200b", value: list.slice(half).join("\n") || "\u200b", inline: true }] }],
+      embeds: [{ color: COLOR, title: `⭐ Auslosung · ${t.fmt}er-Format · Liga`, description: `**${d.rounds} Spieltage** gegen zufällige Gegner (nie zweimal derselbe) · **Top ${d.top} → ${KO_NAME[koSizeFor(t.fmt, t.mode)]}**`, fields: [{ name: "Teilnehmer", value: list.slice(0, half).join("\n"), inline: true }, { name: "\u200b", value: list.slice(half).join("\n") || "\u200b", inline: true }] }],
     };
   }
   const rule = d.top === 1 ? `alle Gruppensieger + ${d.ex} beste Zweite` : `Erste und Zweite${d.ex ? ` + ${d.ex} beste Dritte` : ""}`;
@@ -359,7 +388,7 @@ export function livePlan(t) {
   // Fortschritt: ✅ Spieltag 1 › 🔴 Spieltag 2 › Spieltag 3 › Halbfinale › Finale
   const steps = [];
   for (let r = 1; r <= t.maxRounds; r++) steps.push({ k: "g", r, n: `Spieltag ${r}` });
-  let n = t.koSize || KO_SIZE[t.fmt], kr = 1;
+  let n = t.koSize || koSizeFor(t.fmt, t.mode), kr = 1;
   while (n > 2) { steps.push({ k: "k", r: kr, n: KO_NAME[n] }); n /= 2; kr++; }
   steps.push({ k: "k", r: kr, n: "Finale" });
   const on = (s) => (t.status === "gruppen" && s.k === "g" && s.r === t.round) || (t.status === "ko" && s.k === "k" && s.r === t.koRound);
@@ -376,7 +405,7 @@ export function livePlan(t) {
   const sc = (m) => (m.status === "fertig" ? `\`${m.h}:${m.a}\`${m.pen ? ` (${m.pen[0]}:${m.pen[1]} i.E.)` : ""}` : "`–:–`");
   const mline = (m) => `${icon(m)} ${flagOf(m.home)} **${esc(m.home)}** ${sc(m)} **${esc(m.away)}** ${flagOf(m.away)}`;
 
-  const d = FORMATS[t.fmt];
+  const d = fmtDef(t.fmt, t.mode);
   const parts = [];
   if (t.status === "checkin" || t.status === "gruppen") {
     const r = t.status === "checkin" ? 1 : t.round;

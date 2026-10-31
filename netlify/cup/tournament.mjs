@@ -1,5 +1,5 @@
 // Reine Turnierlogik – keine Discord-Aufrufe. Mannschaften werden über den Vereinsnamen identifiziert.
-import { FORMATS, FORMAT_KEYS, KO_SIZE, KO_NAME, GROUP_NAMES, isFreilos } from "./data.mjs";
+import { fmtDef, koSizeFor, FORMATS, FORMAT_KEYS, KO_SIZE, KO_NAME, GROUP_NAMES, isFreilos } from "./data.mjs";
 
 export const fmtOf = (n) => FORMAT_KEYS.filter((k) => k <= n).pop() ?? null;
 export const nextFmt = (n) => FORMAT_KEYS.find((k) => k > n) ?? null;
@@ -78,7 +78,8 @@ export function closeAndDraw(t) {
   const ordered = [...real.slice(0, f), ...free, ...real.slice(f)];
   t.playing = ordered.slice(0, f);
   t.wait = ordered.slice(f).filter((c) => !isFreilos(c));
-  const sizes = FORMATS[f].g;
+  const D = fmtDef(f, t.mode);
+  const sizes = D.g;
   t.groups = sizes.map((size, i) => ({ name: GROUP_NAMES[i], size, teams: [] }));
   let gi = 0;
   // Freilose zuerst verteilen → jedes in eine andere Gruppe
@@ -90,11 +91,11 @@ export function closeAndDraw(t) {
   }
   t.matches = [];
   t.maxRounds = 0;
-  t.league = !!FORMATS[f].league;
+  t.league = !!D.league;
   if (t.league) {
     // Ligasystem: jeder spielt an jedem Spieltag gegen einen anderen, zufälligen Gegner – nie zweimal gegen denselben
     const g = t.groups[0];
-    const rounds = roundRobin(shuffle([...g.teams])).slice(0, FORMATS[f].rounds);
+    const rounds = roundRobin(shuffle([...g.teams])).slice(0, D.rounds);
     t.maxRounds = rounds.length;
     rounds.forEach((pairs, ri) => shuffle(pairs).forEach(([home, away]) => t.matches.push(newMatch(t, { phase: "gruppe", group: g.name, round: ri + 1, home, away }))));
     t.status = "checkin";
@@ -242,6 +243,25 @@ export function adminSet(t, matchId, h, a, pen) {
   return m;
 }
 
+/** Ergebnis bearbeiten (auch schon bestätigte Spiele).
+ *  Gruppen-/Ligaspiele: solange die Gruppen-/Ligaphase läuft.
+ *  K.-o.-Spiele: aktuelle Runde frei; frühere Runden nur, wenn der Sieger gleich bleibt. */
+export function adminEdit(t, matchId, h, a, pen) {
+  const m = t.matches.find((x) => x.id === matchId);
+  if (!m) throw new Error(`Spiel #${matchId} gibt es nicht.`);
+  if (t.status === "fertig") throw new Error("Der Cup ist schon beendet – Ergebnisse können nicht mehr geändert werden.");
+  if (m.status !== "fertig") return adminSet(t, matchId, h, a, pen);
+  if (m.phase === "gruppe") {
+    if (t.status !== "gruppen") throw new Error("Die Gruppen-/Ligaphase ist vorbei – dieses Spiel kann nicht mehr geändert werden.");
+  } else if (m.round !== t.koRound) {
+    const test = { ...m }; test.pen = normalize(test, h, a, pen); test.h = h; test.a = a;
+    if (winner(test) !== winner(m)) throw new Error("Die nächste Runde läuft schon – hier geht nur ein Ergebnis mit demselben Sieger.");
+  }
+  pen = normalize(m, h, a, pen);
+  Object.assign(m, { h, a, pen, status: "fertig", edited: true });
+  return m;
+}
+
 // ---------- Fortschritt ----------
 /** Prüft, ob die aktuelle Runde fertig ist, und geht weiter. Gibt Ereignisse zurück. */
 export function advance(t) {
@@ -263,7 +283,7 @@ export function advance(t) {
 }
 
 export function qualification(t) {
-  const d = FORMATS[t.fmt];
+  const d = fmtDef(t.fmt, t.mode);
   const mixed = new Set(d.g).size > 1;
   const tabs = t.groups.map((g) => standings(t, g.name).filter((r) => !t.out.includes(r.id)));
   const ppg = (r) => (r.sp ? r.p / r.sp : 0), dpg = (r) => (r.sp ? (r.t - r.gt) / r.sp : 0);
@@ -326,7 +346,7 @@ export function koRoleOf(t, clubName) {
   return koRoundName(t);
 }
 
-export const koSizeOf = (fmt) => KO_SIZE[fmt];
+export const koSizeOf = (fmt, mode) => koSizeFor(fmt, mode);
 
 // ---------- Größenvideos ----------
 export function requestVideo(t, clubName, limit, windowMin = 40, minute = null) {

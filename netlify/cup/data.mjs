@@ -34,11 +34,11 @@ export function shortClub(name) { return String(name); }
 export const FORMATS = {
   8: { g: [4, 4], top: 2, ex: 0 },
   10: { g: [5, 5], top: 2, ex: 0 },
-  12: { g: [12], top: 8, ex: 0, league: true, rounds: 4 }, // Ligasystem: eine Tabelle, 4 Spieltage, Top 8 → Viertelfinale
+  12: { g: [4, 4, 4], top: 2, ex: 2 },
   14: { g: [5, 5, 4], top: 2, ex: 2 },
   16: { g: [4, 4, 4, 4], top: 2, ex: 0 },
   18: { g: [5, 5, 4, 4], top: 2, ex: 0 },
-  20: { g: [20], top: 8, ex: 0, league: true, rounds: 4 }, // Ligasystem: eine Tabelle, 4 Spieltage, Top 8 → Viertelfinale
+  20: { g: [5, 5, 5, 5], top: 2, ex: 0 },
   22: { g: [5, 5, 4, 4, 4], top: 1, ex: 3 },
   24: { g: [4, 4, 4, 4, 4, 4], top: 2, ex: 4 },
   26: { g: [5, 5, 4, 4, 4, 4], top: 2, ex: 4 },
@@ -46,8 +46,18 @@ export const FORMATS = {
   30: { g: [5, 5, 5, 5, 5, 5], top: 2, ex: 4 },
   32: { g: [4, 4, 4, 4, 4, 4, 4, 4], top: 2, ex: 0 },
 };
+/** Ligasystem: eine Tabelle, 4 Spieltage gegen zufällige Gegner; ab 12 Spielern Top 8 → Viertelfinale, sonst Top 4 → Halbfinale */
+export const leagueDef = (n) => ({ g: [n], top: n >= 12 ? 8 : 4, ex: 0, league: true, rounds: 4 });
+/** Standard ohne Auswahl: 12er und 20er als Liga, alles andere mit Gruppen */
+export const defaultMode = (n) => (n === 12 || n === 20 ? "liga" : "gruppen");
+/** Modus pro Cup: "auto" (Standard), "gruppen" oder "liga" */
+export const isLeague = (f, mode) => mode === "liga" || (mode !== "gruppen" && defaultMode(f) === "liga");
+export const fmtDef = (f, mode) => (isLeague(f, mode) ? leagueDef(f) : FORMATS[f]);
+export const MODE_NAME = { auto: "Automatisch (12er/20er Liga, sonst Gruppen)", gruppen: "Gruppenphase", liga: "Ligasystem" };
+
 export const FORMAT_KEYS = Object.keys(FORMATS).map(Number);
 export const KO_SIZE = { 8: 4, 10: 4, 12: 8, 14: 8, 16: 8, 18: 8, 20: 8, 22: 8, 24: 16, 26: 16, 28: 16, 30: 16, 32: 16 };
+export const koSizeFor = (f, mode) => (isLeague(f, mode) ? leagueDef(f).top : KO_SIZE[f]);
 export const KO_NAME = { 2: "Finale", 4: "Halbfinale", 8: "Viertelfinale", 16: "Achtelfinale" };
 
 export const GROUP_NAMES = ["A", "B", "C", "D", "E", "F", "G", "H"];

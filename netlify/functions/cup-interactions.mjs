@@ -5,7 +5,7 @@ import { enqueue, processQueue } from "../cup/roles.mjs";
 import * as T from "../cup/tournament.mjs";
 import * as V from "../cup/views.mjs";
 import * as F from "../cup/flow.mjs";
-import { durText, GROUP_NAMES, ROUND_ROLES, CHANNEL_TYPES, DAYS, COLOR, PLATFORMS, flagOf, cleanEaId } from "../cup/data.mjs";
+import { MODE_NAME, durText, GROUP_NAMES, ROUND_ROLES, CHANNEL_TYPES, DAYS, COLOR, PLATFORMS, flagOf, cleanEaId } from "../cup/data.mjs";
 import * as B from "../cup/bans.mjs";
 import { baseNameOf, nickFor, setNick } from "../cup/names.mjs";
 import * as AS from "../cup/autosetup.mjs";
@@ -65,6 +65,26 @@ async function adminPanelAction(i, context, cfg, act) {
       return eph(`🛑 **${V.esc(t.name)}** wirklich abbrechen? Alle Turnier-Rollen werden entfernt.`, { components: [{ type: 1, components: [{ type: 2, style: 4, label: "Ja, abbrechen", custom_id: "adm:abbrechen_ok" }] }] });
     case "abbrechen_ok": return admin(asAdminCmd(i, "abbrechen", [], t?.channelId), context, cfg);
     case "testcup": return admin(asAdminCmd(i, "testcup-start", [{ name: "teams", value: Number(i.data.values?.[0] || 8) }]), context, cfg);
+    case "edit":
+      if (!t || !["gruppen", "ko"].includes(t.status)) return eph("Gerade laufen keine Spiele.");
+      return eph("", V.editPicker(t));
+    case "edit_pick": {
+      const m = t?.matches.find((x) => x.id === Number(i.data.values?.[0]));
+      if (!m) return eph("Dieses Spiel gibt es nicht mehr.");
+      return V.editModal(m);
+    }
+    case "mode": return eph("", V.modePicker(t?.status === "anmeldung" ? t.mode || cfg.cupMode || "auto" : cfg.cupMode || "auto"));
+    case "mode_set": {
+      const mode = ["auto", "gruppen", "liga"].includes(i.data.values?.[0]) ? i.data.values[0] : "auto";
+      await mutate("config", (c) => { c.cupMode = mode; }, { initial: {} });
+      let note = "Gilt ab dem nächsten Cup.";
+      if (t?.status === "anmeldung") {
+        const { value } = await mutate(tKey(t.channelId), (x) => { x.mode = mode; });
+        later(context, () => F.refreshSignup(value));
+        note = `Gilt auch für **${V.esc(t.name)}** (Anmeldung offen).`;
+      } else if (t) note = "Der laufende Cup bleibt, wie er ausgelost wurde – gilt ab dem nächsten Cup.";
+      return eph(`✅ Modus: **${MODE_NAME[mode]}**\n${note}`);
+    }
     case "panels": return setup(asSetupCmd(i, "panels"), context, cfg);
     case "rechte": return setup(asSetupCmd(i, "rechte"), context, cfg);
     case "status": return setup(asSetupCmd(i, "status"), context, cfg);
@@ -575,6 +595,21 @@ async function modal(i, context) {
       const o = [{ name: "spiel", value: n(v.spiel) }, { name: "heim", value: n(v.heim) }, { name: "gast", value: n(v.gast) }];
       if (String(v.elfmeter || "").trim()) o.push({ name: "elfmeter", value: String(v.elfmeter).trim() });
       return admin(asAdminCmd(i, "ergebnis", o, t?.channelId), context, cfg);
+    }
+    if (kind.startsWith("edit:")) {
+      const id = Number(kind.split(":")[1]);
+      const h = Number(String(v.heim ?? "").trim()), a = Number(String(v.gast ?? "").trim());
+      if (![h, a].every((x) => Number.isInteger(x) && x >= 0)) return eph("Bitte die Tore als Zahlen eintragen.");
+      const pen = String(v.elfmeter || "").trim() ? T.parseScore(v.elfmeter) : null;
+      if (String(v.elfmeter || "").trim() && !pen) return eph("Elfmeter bitte so angeben: `4:3`");
+      if (!t) return eph("Gerade läuft kein Cup.");
+      return background(i, context, async () => {
+        const { value: t2, result } = await mutate(tKey(t.channelId), (x) => { const m = T.adminEdit(x, id, h, a, pen); return { id: m.id, events: T.advance(x) }; });
+        const m = t2.matches.find((x) => x.id === result.id);
+        await F.afterResult(t2, m, result.events, true);
+        if (m.phase === "gruppe" && !result.events.length) await F.refreshGroupGraphic(t2, m.group);
+        return `✅ Spiel #${m.id} geändert: ${V.matchLine(m, false)}`;
+      });
     }
     if (kind === "abmelden") {
       if (!t) return eph("Gerade gibt es keine Anmeldeliste.");
