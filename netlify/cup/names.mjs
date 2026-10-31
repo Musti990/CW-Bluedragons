@@ -1,7 +1,7 @@
 // Spitznamen auf dem Server: "Musti | Musti990" (Discord-Name | EA-ID)
 import { discord } from "./discord.mjs";
 
-const guild = () => process.env.CUP_GUILD_ID;
+const guild = () => (process.env.CUP_GUILD_ID || process.env.GUILD_ID);
 const TAIL = /\s+\|\s+.*$/;
 
 /** Grundname ohne eventuellen alten Zusatz */

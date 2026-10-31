@@ -2,37 +2,28 @@
 
 Turnier-Bot für **EA FC Ultimate Team (1 gegen 1)**: Registrieren mit EA-ID, tägliche Anmeldelisten, Auslosung in Gruppen, Check-in, Ergebnisse mit Bestätigung, K.-o.-Phase mit Turnierbaum, Hall of Fame mit Siegerbild und Trophäenhalle.
 
-Der Cup läuft **im selben Repo und auf derselben Netlify-Seite** wie der Zusagen-Bot, aber als **eigener Discord-Bot**. Der Zusagen-Bot bleibt unverändert. Solange die `CUP_…`-Variablen fehlen, macht der Cup-Teil gar nichts.
+Der Cup läuft **im selben Repo, auf derselben Netlify-Seite und mit demselben Discord-Bot** („CW Bluedragons“) wie der Zusagen-Bot. Befehle mit `/ut-…` und Cup-Buttons leitet der Bot automatisch an den Cup-Teil weiter, alles andere## 1. Netlify: eine neue Variable
 
----
-
-## 1. Neuen Discord-Bot anlegen
-
-1. https://discord.com/developers/applications → **New Application**, z. B. „CW Bluedragons Cup“, Logo als App-Icon.
-2. **General Information:** *Application ID* und *Public Key* kopieren.
-3. **Bot:** *Reset Token* → Token kopieren (geheim halten!).
-4. **Bot → Privileged Gateway Intents:** **Server Members Intent** einschalten.
-5. **OAuth2 → URL Generator:** Scopes `bot` + `applications.commands`, Bot Permission **Administrator** (oder einzeln: Kanäle verwalten, Rollen verwalten, Nicknamen verwalten, Nachrichten senden/verwalten, Links einbetten, Dateien anhängen, Nachrichtenverlauf lesen, Alle Rollen erwähnen) → Link öffnen → Server auswählen.
-
-## 2. Netlify: Umgebungsvariablen
-
-Auf der bestehenden Seite unter **Project configuration → Environment variables** hinzufügen:
+Token, Public Key, Application ID und Server-ID nimmt der Cup automatisch vom bestehenden Bot (`DISCORD_TOKEN`, `DISCORD_PUBLIC_KEY`, `APPLICATION_ID`, `GUILD_ID`). Neu ist nur:
 
 | Variable | Inhalt |
 |---|---|
-| `CUP_DISCORD_TOKEN` | Token vom **neuen** Cup-Bot |
-| `CUP_PUBLIC_KEY` | Public Key vom Cup-Bot |
-| `CUP_APP_ID` | Application ID vom Cup-Bot |
-| `CUP_GUILD_ID` | Server-ID (Entwicklermodus → Rechtsklick auf Server → ID kopieren) |
-| `CUP_SETUP_KEY` | frei gewähltes Passwort, z. B. `ut-setup-4711` |
+| `CUP_SETUP_KEY` | frei gewähltes Passwort, z. B. `bluedragons2026` (nur Buchstaben, Zahlen, Bindestrich) |
 
-Danach **neu deployen**.
+Scope: **All scopes** bzw. mindestens **Functions**. Danach **neu deployen** (und veröffentlichen).
 
-## 3. Discord mit Netlify verbinden
+## 2. Bot-Rechte
 
-1. Developer Portal (Cup-Bot) → **General Information → Interactions Endpoint URL:**
-   `https://DEINE-SEITE.netlify.app/api/cup/interactions` → Speichern.
-2. Im Browser öffnen: `https://DEINE-SEITE.netlify.app/api/cup/setup?key=DEIN_CUP_SETUP_KEY` → Befehle werden registriert.
+Der Bot „CW Bluedragons“ braucht für den Cup zusätzlich **Kanäle verwalten**, **Rollen verwalten**, **Nicknamen verwalten** und **Nachrichten verwalten** (am einfachsten: Rolle des Bots auf **Administrator**). Im Developer Portal unter *Bot* muss **Server Members Intent** an sein.
+
+## 3. Befehle registrieren
+
+Im Browser öffnen: `https://DEINE-SEITE.netlify.app/api/cup/setup?key=DEIN_CUP_SETUP_KEY`
+→ registriert `/ut-einrichten`, `/ut-zeitplan`, `/ut-turnier`, `/ut-admin`. Die Befehle des Zusagen-Bots bleiben erhalten (und umgekehrt behält der Register-Link des Zusagen-Bots die Cup-Befehle).
+
+> Optional: Wer den Cup lieber mit einem **eigenen** Discord-Bot betreibt, trägt `CUP_DISCORD_TOKEN`, `CUP_PUBLIC_KEY`, `CUP_APP_ID`, `CUP_GUILD_ID` ein und setzt beim eigenen Bot die Interactions-URL `https://DEINE-SEITE.netlify.app/api/cup/interactions`.
+
+ → Befehle werden registriert.
 
 ## 4. Im Discord einrichten
 
@@ -45,6 +36,9 @@ Legt die Rollen (**UT Turnierleitung**, **UT Spieler**, **UT Gruppe A–H**, **U
 - `/ut-einrichten status` zeigt, was noch fehlt.
 
 ## 5. Allein testen (Test-Cup)
+
+> Tipp: Solange du testest, die neuen Kategorien (🐉 UT CUP · INFO, 🏆 ULTIMATE TEAM CUP …) in Discord für @everyone ausblenden – dann sieht noch niemand den Cup.
+
 
 1. Selbst registrieren: im Kanal **UT-Regelwerk** akzeptieren, dann **UT-Registrieren** → Plattform → EA-ID.
 2. In einem beliebigen Testkanal: `/ut-admin testcup-start teams: 8` → du + 7 Testspieler.

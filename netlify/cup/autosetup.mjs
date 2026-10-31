@@ -5,7 +5,7 @@ import { discord, getRoles, createRole, deleteMessage } from "./discord.mjs";
 import { GROUP_NAMES, ROUND_ROLES, DAYS, CHANNEL_TYPES } from "./data.mjs";
 import { parseTime, toMinutes } from "./time.mjs";
 
-const G = () => process.env.CUP_GUILD_ID;
+const G = () => (process.env.CUP_GUILD_ID || process.env.GUILD_ID);
 const P = { VIEW: 1n << 10n, SEND: 1n << 11n, EMBED: 1n << 14n, FILES: 1n << 15n, HISTORY: 1n << 16n };
 const bits = (...xs) => xs.reduce((a, b) => a | b, 0n).toString();
 

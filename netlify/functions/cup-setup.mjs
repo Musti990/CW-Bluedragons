@@ -101,11 +101,20 @@ export default async (req) => {
   const key = new URL(req.url).searchParams.get("key");
   const text = (s, status = 200) => new Response(s, { status, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   if (!process.env.CUP_SETUP_KEY || key !== process.env.CUP_SETUP_KEY) return text("❌ Falscher oder fehlender Schlüssel.", 401);
-  const { CUP_APP_ID, CUP_GUILD_ID, CUP_DISCORD_TOKEN } = process.env;
-  const res = await fetch(`https://discord.com/api/v10/applications/${CUP_APP_ID}/guilds/${CUP_GUILD_ID}/commands`, {
-    method: "PUT", headers: { Authorization: `Bot ${CUP_DISCORD_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify(COMMANDS),
-  });
-  return res.ok ? text(`✅ ${COMMANDS.length} Befehle registriert. Du kannst die Seite schließen.`) : text(`❌ Fehler ${res.status}: ${await res.text()}`, 500);
+  const APP = process.env.CUP_APP_ID || process.env.APPLICATION_ID;
+  const GUILD = process.env.CUP_GUILD_ID || process.env.GUILD_ID;
+  const TOKEN = process.env.CUP_DISCORD_TOKEN || process.env.DISCORD_TOKEN;
+  if (!APP || !GUILD || !TOKEN) return text("❌ Es fehlen APPLICATION_ID, GUILD_ID oder DISCORD_TOKEN in Netlify.", 500);
+  const url = `https://discord.com/api/v10/applications/${APP}/guilds/${GUILD}/commands`;
+  const headers = { Authorization: `Bot ${TOKEN}`, "Content-Type": "application/json" };
+  // Einzeln anlegen bzw. aktualisieren – die Befehle des Zusagen-Bots bleiben dabei erhalten
+  const done = [];
+  for (const cmd of COMMANDS) {
+    const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(cmd) });
+    if (!res.ok) return text(`❌ Fehler bei /${cmd.name} (${res.status}): ${await res.text()}`, 500);
+    done.push("/" + cmd.name);
+  }
+  return text(`✅ ${done.length} Cup-Befehle registriert: ${done.join(", ")}\nDie Befehle des Zusagen-Bots bleiben erhalten. Du kannst die Seite schließen.`);
 };
 
 export const config = { path: "/api/cup/setup" };

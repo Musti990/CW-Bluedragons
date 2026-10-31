@@ -99,6 +99,17 @@ exports.handler = async () => {
     ? `https://discord.com/api/v10/applications/${appId}/guilds/${guildId}/commands`
     : `https://discord.com/api/v10/applications/${appId}/commands`;
 
+  // Bereits registrierte Cup-Befehle (/ut-…) behalten, sonst würde der PUT sie löschen
+  try {
+    const existing = await fetch(url, { headers: { Authorization: `Bot ${token}` } }).then((r) => (r.ok ? r.json() : []));
+    for (const c of existing) {
+      if (String(c.name).startsWith('ut-') && !commands.some((x) => x.name === c.name)) {
+        const { id, application_id, guild_id, version, ...keep } = c;
+        commands.push(keep);
+      }
+    }
+  } catch (e) { console.error('Cup-Befehle behalten:', e); }
+
   const res = await fetch(url, {
     method: 'PUT',
     headers: {

@@ -8,7 +8,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  */
 export async function discord(path, method = "GET", body, { form, reason, maxWait = 6000 } = {}) {
   for (let attempt = 0; attempt < 4; attempt++) {
-    const headers = { Authorization: `Bot ${process.env.CUP_DISCORD_TOKEN}` };
+    const headers = { Authorization: `Bot ${(process.env.CUP_DISCORD_TOKEN || process.env.DISCORD_TOKEN)}` };
     if (!form) headers["Content-Type"] = "application/json";
     if (reason) headers["X-Audit-Log-Reason"] = encodeURIComponent(reason);
     const res = await fetch(API + path, { method, headers, body: form ?? (body === undefined ? undefined : JSON.stringify(body)) });
@@ -62,7 +62,7 @@ export async function sendWithFile(ch, payload, filename, buffer, type = "image/
   return discord(`/channels/${ch}/messages`, "POST", undefined, { form });
 }
 
-const guild = () => process.env.CUP_GUILD_ID;
+const guild = () => (process.env.CUP_GUILD_ID || process.env.GUILD_ID);
 export const addRole = (user, role, reason) => discord(`/guilds/${guild()}/members/${user}/roles/${role}`, "PUT", undefined, { reason });
 export const removeRole = (user, role, reason) => discord(`/guilds/${guild()}/members/${user}/roles/${role}`, "DELETE", undefined, { reason });
 export const getRoles = () => discord(`/guilds/${guild()}/roles`);

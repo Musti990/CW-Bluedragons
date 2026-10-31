@@ -459,7 +459,7 @@ async function displayNames(ids) {
   const { discord } = await import("./discord.mjs");
   const out = {};
   for (const id of ids) {
-    const m = await discord(`/guilds/${process.env.CUP_GUILD_ID}/members/${id}`);
+    const m = await discord(`/guilds/${(process.env.CUP_GUILD_ID || process.env.GUILD_ID)}/members/${id}`);
     out[id] = m?.nick || m?.user?.global_name || m?.user?.username || "";
   }
   return out;

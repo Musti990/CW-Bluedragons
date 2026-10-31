@@ -9,8 +9,11 @@ import { processSetupJobs } from "../cup/autosetup.mjs";
 import { runCleanup } from "../cup/cleanup.mjs";
 
 export default async () => {
-  // Ohne eingerichteten Cup-Bot nichts tun (z. B. solange nur der Zusagen-Bot läuft)
-  if (!process.env.CUP_DISCORD_TOKEN || !process.env.CUP_GUILD_ID) return;
+  if (!(process.env.CUP_DISCORD_TOKEN || process.env.DISCORD_TOKEN) || !(process.env.CUP_GUILD_ID || process.env.GUILD_ID)) return;
+  // Erst aktiv werden, wenn der Cup eingerichtet wurde (/ut-einrichten) – vorher nichts tun
+  const { getConfig } = await import("../cup/store.mjs");
+  const cfg = await getConfig();
+  if (!Object.keys(cfg.channels || {}).length && !(await (await import("../cup/store.mjs")).get("setupjobs"))) return;
   const start = Date.now();
   const step = async (name, fn) => { try { await fn(); } catch (e) { console.error(`${name}:`, e?.message || e); } };
   await step("Einrichtung", () => processSetupJobs(9000));

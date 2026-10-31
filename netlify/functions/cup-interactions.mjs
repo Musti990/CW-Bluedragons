@@ -63,7 +63,7 @@ export default async (req, context) => {
   const body = await req.text();
   const sig = req.headers.get("x-signature-ed25519"), time = req.headers.get("x-signature-timestamp");
   let ok = false;
-  try { ok = !!sig && !!time && nacl.sign.detached.verify(Buffer.from(time + body), Buffer.from(sig, "hex"), Buffer.from(process.env.CUP_PUBLIC_KEY, "hex")); } catch {}
+  try { ok = !!sig && !!time && nacl.sign.detached.verify(Buffer.from(time + body), Buffer.from(sig, "hex"), Buffer.from((process.env.CUP_PUBLIC_KEY || process.env.DISCORD_PUBLIC_KEY), "hex")); } catch {}
   if (!ok) return new Response("Ungültige Signatur", { status: 401 });
   const i = JSON.parse(body);
   if (i.type === 1) return json({ type: 1 });
@@ -213,7 +213,7 @@ async function setup(i, context, cfg) {
     const r = cfg.roles || {};
     const roleOk = r.manager && r.turnierleitung && GROUP_NAMES.every((g) => r.groups?.[g]) && ROUND_ROLES.every((x) => r.rounds?.[x]);
     const pr = await AS.setupProgress();
-    const memOk = !!(await discord(`/guilds/${process.env.CUP_GUILD_ID}/members?limit=1`));
+    const memOk = !!(await discord(`/guilds/${(process.env.CUP_GUILD_ID || process.env.GUILD_ID)}/members?limit=1`));
     const memLine = memOk ? "**Mitgliederliste:** ✅ lesbar (Rollen-Check läuft)" : "**Mitgliederliste:** ❌ nicht lesbar – im Discord Developer Portal unter *Bot* den **Server Members Intent** einschalten. Ohne den funktioniert der Rollen-Check nicht.";
     return `${memLine}\n${broken.length ? `\n⚠️ **${broken.length} ${broken.length === 1 ? "verknüpfter Kanal existiert" : "verknüpfte Kanäle existieren"} nicht mehr** – im richtigen Kanal \`/ut-einrichten kanal\` bzw. \`/ut-einrichten gruppe\` ausführen.\n` : ""}\n${pr?.left ? `⏳ **Einrichtung läuft noch:** ${pr.done}/${pr.total} erledigt\n\n` : ""}**Kanäle**\n${lines.join("\n")}\n\n**Rollen:** ${roleOk ? "✅ alle verknüpft" : "⚠️ noch nicht vollständig – \`/ut-einrichten rollen\`"}\n-# Gruppenkanäle brauchst du nur so viele, wie es Gruppen gibt (8 bei 32 Spielern).`.slice(0, 1990);
   });

@@ -1034,6 +1034,17 @@ async function handleTicketModal(interaction) {
   return json(200, { type: 4, data: { embeds: [infoEmbed(applicantId, info, wasComplete)], allowed_mentions: { parse: [] } } });
 }
 
+// Was gehört zum Zusagen-Bot? Alles andere (Befehle /ut-…, Cup-Buttons) gehört zum Ultimate Team Cup.
+const BD_PREFIXES = ['genrole:', 'kader:', 'lineup:', 'posnick:', 'posrole:', 'ticket:', 'ticketform:', 'rsvp:'];
+function isCupInteraction(i) {
+  if (i.type === 2 || i.type === 4) return String(i.data?.name || '').startsWith('ut-');
+  if (i.type === 3 || i.type === 5) {
+    const id = String(i.data?.custom_id || '');
+    return !BD_PREFIXES.some((p) => id.startsWith(p));
+  }
+  return false;
+}
+
 // ---------- Handler ----------
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { error: 'method not allowed' });
@@ -1042,6 +1053,25 @@ exports.handler = async (event) => {
   const interaction = JSON.parse(event.body);
 
   if (interaction.type === 1) return json(200, { type: 1 }); // PING -> PONG
+
+  // Ultimate Team Cup: gleiche Discord-App, eigener Teil → Anfrage an /api/cup/interactions weiterreichen
+  if (isCupInteraction(interaction)) {
+    try {
+      const res = await fetch(`${process.env.URL}/api/cup/interactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-signature-ed25519': event.headers['x-signature-ed25519'],
+          'x-signature-timestamp': event.headers['x-signature-timestamp'],
+        },
+        body: event.body,
+      });
+      return { statusCode: res.status, headers: { 'Content-Type': 'application/json' }, body: await res.text() };
+    } catch (e) {
+      console.error('Cup weiterleiten:', e);
+      return json(200, { type: 4, data: { content: '⚠️ Der Cup ist gerade nicht erreichbar – bitte gleich nochmal versuchen.', flags: 64 } });
+    }
+  }
 
   const store = getStore({
     name: 'rsvp-events',
