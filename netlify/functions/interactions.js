@@ -13,7 +13,7 @@ const {
   lineupStore, lineupKey, emptyLineup, getLineup, saveLineup,
   switchFormation, autoFill, lineupEmbed, lineupComponents, requestLineupRefresh, FORMATION_NAMES,
 } = require('./lib/lineup-core');
-const {
+const { getGroups, setGroups, POS_GROUP,
   KADER_TEAMS,
   api: discordApi,
   getGuildRoles,
@@ -735,8 +735,15 @@ async function handleKaderButton(interaction) {
     return ephemeral('🔄 Kader wird aktualisiert…');
   }
   if (action === 'add') {
-    return ephemeral(`Wen willst du zum Kader von **${label}** hinzufügen? (bis zu 10 auf einmal)`, {
-      components: [{ type: 1, components: [{ type: 5, custom_id: `kader:addsel:${team}`, placeholder: 'Spieler auswählen…', min_values: 1, max_values: 10 }] }],
+    return ephemeral(`**➕ Spieler zum Kader von ${label} hinzufügen**\nSchritt 1 von 3: Spieler auswählen`, {
+      components: [{ type: 1, components: [{ type: 5, custom_id: `kader:addsel:${team}`, placeholder: 'Spieler auswählen…', min_values: 1, max_values: 1 }] }],
+    });
+  }
+  if (action === 'pos') {
+    const { players } = await getKaderPlayers(guildId, team);
+    if (players.length === 0) return ephemeral(`Im Kader von **${label}** ist noch niemand.`);
+    return ephemeral(`**🧭 Position ändern** – wen willst du in eine andere Spalte setzen? (${label})`, {
+      components: [{ type: 1, components: [{ type: 3, custom_id: `kader:possel:${team}`, placeholder: 'Spieler auswählen…', min_values: 1, max_values: 1, options: playerOptions(players) }] }],
     });
   }
   if (action === 'rem' || action === 'num') {
@@ -763,10 +770,38 @@ async function handleKaderButton(interaction) {
 
   // --- Auswahl aus den Menüs ---
   const selected = interaction.data.values || [];
-  if (action === 'addsel' || action === 'remsel') {
+  // Hinzufügen Schritt 2 / Position ändern: Spalte wählen
+  if (action === 'addsel' || action === 'possel') {
+    const userId = selected[0];
+    const next = action === 'addsel' ? 'addgrp' : 'posgrp';
+    return json(200, { type: 7, data: {
+      content: action === 'addsel' ? `**➕ <@${userId}> hinzufügen**\nSchritt 2 von 3: In welche Spalte?` : `**🧭 <@${userId}>** – in welche Spalte?`,
+      allowed_mentions: { parse: [] },
+      components: [{ type: 1, components: [{ type: 3, custom_id: `kader:${next}:${team}:${userId}`, placeholder: 'Spalte auswählen…', options: KADER_GROUP_OPTIONS }] }],
+    } });
+  }
+  if (action === 'posgrp') {
+    const userId = interaction.data.custom_id.split(':')[3];
+    const groups = await getGroups(team);
+    groups[userId] = selected[0];
+    await setGroups(team, groups);
+    await requestKaderRefresh({ action: 'refresh', team, guildId });
+    return updateEphemeral(`✅ <@${userId}> steht jetzt bei **${KADER_GROUP_NAMES[selected[0]]}** – der Kader wird gleich aktualisiert.`);
+  }
+  // Hinzufügen Schritt 3: Rückennummer (Formular)
+  if (action === 'addgrp') {
+    const userId = interaction.data.custom_id.split(':')[3];
+    return json(200, { type: 9, data: {
+      custom_id: `kader:addmodal:${team}:${userId}:${selected[0]}`,
+      title: `Rückennummer · ${KADER_GROUP_NAMES[selected[0]]}`.slice(0, 45),
+      components: [{ type: 1, components: [{ type: 4, custom_id: 'nummer', style: 1, label: 'Rückennummer (1–99, leer = ohne Nummer)', min_length: 0, max_length: 2, required: false }] }],
+    } });
+  }
+
+  if (action === 'remsel') {
     const role = findKaderRole(await getGuildRoles(guildId), team);
     if (!role) return updateEphemeral(`⚠️ Die Rolle **${KADER_TEAMS[team].roleName}** gibt es nicht.`);
-    const add = action === 'addsel';
+    const add = false;
     const ok = [];
     const failed = [];
     for (const userId of selected) {
@@ -780,6 +815,9 @@ async function handleKaderButton(interaction) {
       const numbers = await getNumbers(team);
       selected.forEach((id) => delete numbers[id]); // Nummer wird wieder frei
       await setNumbers(team, numbers);
+      const groups = await getGroups(team);
+      selected.forEach((id) => delete groups[id]);
+      await setGroups(team, groups);
     }
     if (ok.length) await requestKaderRefresh({ action: 'refresh', team, guildId });
     let msg = ok.length ? `✅ ${add ? 'Hinzugefügt' : 'Entfernt'}: ${ok.join(', ')} – der Kader wird gleich aktualisiert.` : '';
@@ -807,6 +845,40 @@ async function handleKaderButton(interaction) {
   }
 
   return ephemeral('Unbekannte Aktion.');
+}
+
+const KADER_GROUP_NAMES = { TW: 'Torwart', ABW: 'Abwehr', MF: 'Mittelfeld', OFF: 'Offensive' };
+const KADER_GROUP_OPTIONS = [
+  { label: 'Torwart', value: 'TW', emoji: { name: '🧤' } },
+  { label: 'Abwehr', value: 'ABW', emoji: { name: '🛡️' } },
+  { label: 'Mittelfeld', value: 'MF', emoji: { name: '🎯' } },
+  { label: 'Offensive', value: 'OFF', emoji: { name: '⚽' } },
+];
+
+async function handleKaderAddModal(interaction) {
+  const [, , team, userId, grp] = interaction.data.custom_id.split(':');
+  if (!(await isKaderAdmin(interaction))) return ephemeral(NO_ADMIN);
+  const guildId = interaction.guild_id;
+  const raw = interaction.data.components?.[0]?.components?.[0]?.value?.trim() || '';
+  const numbers = await getNumbers(team);
+  let nr = null;
+  if (raw !== '') {
+    nr = Number(raw);
+    if (!Number.isInteger(nr) || nr < 1 || nr > 99) return ephemeral('❌ Die Nummer muss zwischen 1 und 99 liegen.');
+    const taken = Object.entries(numbers).find(([uid, n]) => n === nr && uid !== userId);
+    if (taken) return ephemeral(`❌ Die **${nr}** trägt schon <@${taken[0]}>. Bitte eine andere Nummer wählen.`);
+  }
+  const role = findKaderRole(await getGuildRoles(guildId), team);
+  if (!role) return ephemeral(`⚠️ Die Rolle **${KADER_TEAMS[team].roleName}** gibt es nicht.`);
+  const res = await discordApi(`/guilds/${guildId}/members/${userId}/roles/${role.id}`, { method: 'PUT', headers: { 'X-Audit-Log-Reason': encodeURIComponent(`Kader ${KADER_TEAMS[team].label} über Bot`) } });
+  if (!res.ok) return ephemeral(`⚠️ Konnte <@${userId}> nicht hinzufügen – die Bot-Rolle muss über „${role.name}“ stehen.`);
+  if (nr != null) numbers[userId] = nr; else delete numbers[userId];
+  await setNumbers(team, numbers);
+  const groups = await getGroups(team);
+  groups[userId] = grp;
+  await setGroups(team, groups);
+  await requestKaderRefresh({ action: 'refresh', team, guildId });
+  return ephemeral(`✅ <@${userId}> ist im Kader: **${KADER_GROUP_NAMES[grp]}**${nr != null ? ` · Nummer **${nr}**` : ''} – der Kader wird gleich aktualisiert.`);
 }
 
 async function handleKaderModal(interaction) {
@@ -1035,7 +1107,7 @@ async function handleTicketModal(interaction) {
 }
 
 // Was gehört zum Zusagen-Bot? Alles andere (Befehle /ut-…, Cup-Buttons) gehört zum Ultimate Team Cup.
-const BD_PREFIXES = ['genrole:', 'kader:', 'lineup:', 'posnick:', 'posrole:', 'ticket:', 'ticketform:', 'rsvp:'];
+const BD_PREFIXES = ['bdp:', 'genrole:', 'kader:', 'lineup:', 'posnick:', 'posrole:', 'ticket:', 'ticketform:', 'rsvp:'];
 function isCupInteraction(i) {
   if (i.type === 2 || i.type === 4) return String(i.data?.name || '').startsWith('ut-');
   if (i.type === 3 || i.type === 5) {
@@ -1043,6 +1115,89 @@ function isCupInteraction(i) {
     return !BD_PREFIXES.some((p) => id.startsWith(p));
   }
   return false;
+}
+
+// ---------- Bedien-Panels (/panel): Session und Aufstellung per Klick ----------
+function sessionPanel() {
+  return {
+    embeds: [{
+      color: 0x1f6bff,
+      title: '🎮 SESSION · PRO CLUBS STATISTIKEN',
+      description: 'Starte eine Session – der Bot prüft dann alle 2 Minuten auf neue Spiele und postet Spielbericht und Spielerstatistik in **#match-history**.\nMit **Session beenden** kommt die Bilanz (Spieler nach Ø-Rating).',
+      thumbnail: { url: `${process.env.URL}/blue-dragons-logo.png` },
+      footer: { text: 'Nur Admins · Antworten sieht nur, wer klickt' },
+    }],
+    components: [{ type: 1, components: [
+      { type: 2, style: 3, label: 'Session starten', emoji: { name: '▶️' }, custom_id: 'bdp:sess_start' },
+      { type: 2, style: 4, label: 'Session beenden', emoji: { name: '⏹️' }, custom_id: 'bdp:sess_end' },
+      { type: 2, style: 2, label: 'Laufende Sessions', emoji: { name: '📊' }, custom_id: 'bdp:sess_list' },
+    ] }],
+  };
+}
+
+function lineupPanel() {
+  return {
+    embeds: [{
+      color: 0x1f6bff,
+      title: '📋 AUFSTELLUNG',
+      description: 'Klick auf dein Team, gib optional einen Titel ein (z. B. „Aufstellung Cup“) – danach öffnet sich der Aufstellungs-Builder: Formation wählen, Spieler einsetzen, fertig ist das Bild.',
+      thumbnail: { url: `${process.env.URL}/blue-dragons-logo.png` },
+      footer: { text: 'Nur Admins · Der Builder ist nur für dich sichtbar' },
+    }],
+    components: [{ type: 1, components: Object.entries(KADER_TEAMS).map(([team, t]) => ({ type: 2, style: 1, label: `Aufstellung · ${t.label}`.slice(0, 80), emoji: { name: '📋' }, custom_id: `bdp:lu:${team}` })) }],
+  };
+}
+
+async function handlePanelCommand(interaction) {
+  if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können Panels posten.');
+  const typ = (interaction.data.options || []).find((o) => o.name === 'typ')?.value;
+  const panel = typ === 'aufstellung' ? lineupPanel() : sessionPanel();
+  return json(200, { type: 4, data: panel });
+}
+
+const modalValue = (interaction, id) => {
+  for (const r of interaction.data.components || []) for (const c of r.components || []) if (c.custom_id === id) return String(c.value || '').trim();
+  return '';
+};
+
+async function handlePanelAction(interaction) {
+  if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Das Panel dürfen nur Admins benutzen.');
+  const id = interaction.data.custom_id;
+  const asSession = (value) => ({ ...interaction, type: 2, data: { name: 'session', options: [{ name: 'club', value }] } });
+
+  if (id === 'bdp:sess_start') {
+    return json(200, { type: 9, data: { custom_id: 'bdp:sess_modal', title: 'Session starten', components: [{ type: 1, components: [{ type: 4, custom_id: 'club', style: 1, label: 'Clubname (oder Club-ID)', required: true, min_length: 2, max_length: 40, placeholder: 'z. B. CW BlueDragons' }] }] } });
+  }
+  if (id === 'bdp:sess_modal') {
+    const q = modalValue(interaction, 'club');
+    if (/^\d{3,}$/.test(q)) return handleSessionStart(asSession(`${q}|Club ${q}`));
+    const { searchClubs } = require('./lib/club-search');
+    const clubs = await searchClubs(q);
+    if (!clubs.length) return ephemeral(`🔍 Kein Club zu „${q}“ gefunden. Prüf die Schreibweise oder gib die Club-ID ein.`);
+    if (clubs.length === 1) return handleSessionStart(asSession(`${clubs[0].clubId}|${clubs[0].name}`));
+    return ephemeral(`🔍 ${clubs.length} Clubs gefunden – welcher ist es?`, {
+      components: [{ type: 1, components: [{ type: 3, custom_id: 'bdp:sess_pick', placeholder: 'Club auswählen…', options: clubs.slice(0, 25).map((c) => ({ label: c.name.slice(0, 100), description: `${c.games} Spiele · ID ${c.clubId}`, value: `${c.clubId}|${c.name}`.slice(0, 100) })) }] }],
+    });
+  }
+  if (id === 'bdp:sess_pick') return handleSessionStart(asSession(interaction.data.values?.[0] || ''));
+  if (id === 'bdp:sess_end') return handleSessionEnd(interaction);
+  if (id === 'bdp:sess_list') {
+    const list = await listRunningSessions(sessionStore());
+    if (!list.length) return ephemeral('Gerade läuft keine Session.');
+    return ephemeral(`📊 **Laufende Sessions**\n${list.map((x) => `• **${x.label}** (ID ${x.clubId}) · ${x.matches.length} ${x.matches.length === 1 ? 'Spiel' : 'Spiele'}${x.endRequestedAt ? ' · wird beendet' : ''}`).join('\n')}`);
+  }
+  if (id.startsWith('bdp:lu:')) {
+    const team = id.split(':')[2];
+    return json(200, { type: 9, data: { custom_id: `bdp:lu_modal:${team}`, title: `Aufstellung · ${KADER_TEAMS[team]?.label || ''}`.slice(0, 45), components: [{ type: 1, components: [{ type: 4, custom_id: 'titel', style: 1, label: 'Titel (optional)', required: false, max_length: 60, placeholder: 'z. B. Aufstellung Cup' }] }] } });
+  }
+  if (id.startsWith('bdp:lu_modal:')) {
+    const team = id.split(':')[2];
+    const titel = modalValue(interaction, 'titel');
+    const options = [{ name: 'team', value: team }];
+    if (titel) options.push({ name: 'titel', value: titel });
+    return handleAufstellungCommand({ ...interaction, type: 2, data: { name: 'aufstellung', options } });
+  }
+  return ephemeral('Unbekannte Aktion.');
 }
 
 // ---------- Handler ----------
@@ -1091,6 +1246,14 @@ exports.handler = async (event) => {
     return handleRoleCommand();
   }
 
+  if (interaction.type === 2 && interaction.data?.name === 'panel') {
+    return handlePanelCommand(interaction);
+  }
+
+  if ((interaction.type === 3 || interaction.type === 5) && String(interaction.data?.custom_id || '').startsWith('bdp:')) {
+    return handlePanelAction(interaction);
+  }
+
   if (interaction.type === 2 && interaction.data?.name === 'kader') {
     return handleKaderCommand(interaction);
   }
@@ -1118,6 +1281,10 @@ exports.handler = async (event) => {
 
   if (interaction.type === 5 && interaction.data.custom_id.startsWith('ticketform:')) {
     return handleTicketModal(interaction);
+  }
+
+  if (interaction.type === 5 && interaction.data.custom_id.startsWith('kader:addmodal:')) {
+    return handleKaderAddModal(interaction);
   }
 
   if (interaction.type === 5 && interaction.data.custom_id.startsWith('kader:nummodal:')) {

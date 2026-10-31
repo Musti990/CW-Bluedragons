@@ -85,6 +85,14 @@ async function setNumbers(team, numbers) {
   await kaderStore().setJSON(`numbers-${team}`, numbers);
 }
 
+// Fest zugewiesene Spalte (TW/ABW/MF/OFF) pro Spieler – überschreibt die automatische Position
+async function getGroups(team) {
+  return (await kaderStore().get(`groups-${team}`, { type: 'json' })) || {};
+}
+async function setGroups(team, groups) {
+  await kaderStore().setJSON(`groups-${team}`, groups);
+}
+
 // Alle Kader-Spieler eines Teams mit Name, Position, Spalte und Nummer
 async function getKaderPlayers(guildId, team) {
   const roles = await getGuildRoles(guildId);
@@ -95,6 +103,7 @@ async function getKaderPlayers(guildId, team) {
   if (!res.ok) throw new Error(`Mitglieder konnten nicht geladen werden (${res.status})`);
   const members = await res.json();
   const numbers = await getNumbers(team);
+  const fixed = await getGroups(team);
 
   // Position aus Positions-Rollen (z. B. Rolle "ZDM"), sonst aus dem Nickname (HP:/NP:)
   const roleNameById = new Map(roles.map((r) => [r.id, String(r.name).toUpperCase()]));
@@ -113,7 +122,7 @@ async function getKaderPlayers(guildId, team) {
         id: m.user.id,
         name,
         pos,
-        group: POS_GROUP[pos] || 'MF', // ohne Positions-Tag -> Mittelfeld
+        group: fixed[m.user.id] || POS_GROUP[pos] || 'MF', // fest zugewiesen, sonst Position, sonst Mittelfeld
         number: numbers[m.user.id] ?? null,
       };
     })
@@ -141,6 +150,7 @@ function kaderComponents(team) {
         { type: 2, style: 3, label: 'Spieler hinzufügen', emoji: { name: '➕' }, custom_id: `kader:add:${team}` },
         { type: 2, style: 4, label: 'Spieler entfernen', emoji: { name: '➖' }, custom_id: `kader:rem:${team}` },
         { type: 2, style: 2, label: 'Nummer vergeben', emoji: { name: '🔢' }, custom_id: `kader:num:${team}` },
+        { type: 2, style: 2, label: 'Position ändern', emoji: { name: '🧭' }, custom_id: `kader:pos:${team}` },
         { type: 2, style: 2, label: 'Aktualisieren', emoji: { name: '🔄' }, custom_id: `kader:refresh:${team}` },
       ],
     },
@@ -177,6 +187,9 @@ module.exports = {
   isKaderAdmin,
   getNumbers,
   setNumbers,
+  getGroups,
+  setGroups,
+  POS_GROUP,
   getKaderPlayers,
   buildKaderEmbed,
   kaderComponents,

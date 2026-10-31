@@ -95,6 +95,15 @@ exports.handler = async () => {
     },
   ];
 
+  commands.push({
+    name: 'panel',
+    description: 'Postet ein Bedien-Panel in diesen Kanal (Session oder Aufstellung) – nur Admins',
+    options: [{ name: 'typ', description: 'Welches Panel?', type: 3, required: true, choices: [
+      { name: 'Session (Spielberichte starten/beenden)', value: 'session' },
+      { name: 'Aufstellung', value: 'aufstellung' },
+    ] }],
+  });
+
   const url = guildId
     ? `https://discord.com/api/v10/applications/${appId}/guilds/${guildId}/commands`
     : `https://discord.com/api/v10/applications/${appId}/commands`;
