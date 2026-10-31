@@ -30,15 +30,15 @@ export function cleanEaId(raw) {
 }
 export function shortClub(name) { return String(name); }
 
-/** Formate: Gruppengrößen, wie viele pro Gruppe sicher weiter (top) und wie viele „Beste des nächsten Platzes“ (ex). */
+/** Formate (league = Ligasystem mit einer Tabelle und festen Spieltagen): Gruppengrößen, wie viele pro Gruppe sicher weiter (top) und wie viele „Beste des nächsten Platzes“ (ex). */
 export const FORMATS = {
   8: { g: [4, 4], top: 2, ex: 0 },
   10: { g: [5, 5], top: 2, ex: 0 },
-  12: { g: [4, 4, 4], top: 2, ex: 2 },
+  12: { g: [12], top: 8, ex: 0, league: true, rounds: 4 }, // Ligasystem: eine Tabelle, 4 Spieltage, Top 8 → Viertelfinale
   14: { g: [5, 5, 4], top: 2, ex: 2 },
   16: { g: [4, 4, 4, 4], top: 2, ex: 0 },
   18: { g: [5, 5, 4, 4], top: 2, ex: 0 },
-  20: { g: [5, 5, 5, 5], top: 2, ex: 0 },
+  20: { g: [20], top: 8, ex: 0, league: true, rounds: 4 }, // Ligasystem: eine Tabelle, 4 Spieltage, Top 8 → Viertelfinale
   22: { g: [5, 5, 4, 4, 4], top: 1, ex: 3 },
   24: { g: [4, 4, 4, 4, 4, 4], top: 2, ex: 4 },
   26: { g: [5, 5, 4, 4, 4, 4], top: 2, ex: 4 },

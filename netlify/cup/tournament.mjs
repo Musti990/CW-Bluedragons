@@ -90,6 +90,19 @@ export function closeAndDraw(t) {
   }
   t.matches = [];
   t.maxRounds = 0;
+  t.league = !!FORMATS[f].league;
+  if (t.league) {
+    // Ligasystem: jeder spielt an jedem Spieltag gegen einen anderen, zufälligen Gegner – nie zweimal gegen denselben
+    const g = t.groups[0];
+    const rounds = roundRobin(shuffle([...g.teams])).slice(0, FORMATS[f].rounds);
+    t.maxRounds = rounds.length;
+    rounds.forEach((pairs, ri) => shuffle(pairs).forEach(([home, away]) => t.matches.push(newMatch(t, { phase: "gruppe", group: g.name, round: ri + 1, home, away }))));
+    t.status = "checkin";
+    t.checked = t.playing.filter((c) => isFreilos(c) || t.virtual?.includes(c));
+    t.waitChecked = [];
+    t.out = t.playing.filter(isFreilos);
+    return { cancelled: false };
+  }
   for (const g of t.groups) {
     const rounds = roundRobin(g.teams);
     t.maxRounds = Math.max(t.maxRounds, rounds.length);
@@ -105,6 +118,9 @@ export function closeAndDraw(t) {
 function newMatch(t, data) {
   return { id: t.nextId++, reports: {}, h: null, a: null, pen: null, status: "offen", ff: false, ...data };
 }
+
+/** Anzeigename: „Liga“ im Ligasystem, sonst „Gruppe A“ */
+export const groupLabel = (t, g) => (t.league ? "Liga" : `Gruppe ${typeof g === "string" ? g : g.name}`);
 
 export const groupOf = (t, clubName) => t.groups.find((g) => g.teams.includes(clubName))?.name ?? null;
 

@@ -112,50 +112,39 @@ export async function hallOfFameImage({ podium, title, sub, seed }) {
   const W = bg.width, H = bg.height;
   const c = createCanvas(W, H), x = c.getContext("2d");
   x.drawImage(bg, 0, 0, W, H);
-  // Felder in den Wappen (Koordinaten der Vorlage 1672 × 941)
+  // Namensschilder der CW-Vorlage (Koordinaten der Vorlage 1672 × 941): „DEIN NAME HIER“ überdecken, EA-ID hineinschreiben
   const k = W / 1672;
   const slots = [
-    // cx/cy = gemessene Mitte der leeren Wappenfläche
-    { i: 0, cx: 823, cy: 683, w: 400, flag: 76, name: 64, mgr: 26, glow: "rgba(255,200,80,.95)", col: "#fff4cf" },
-    { i: 1, cx: 297, cy: 688, w: 290, flag: 60, name: 50, mgr: 21, glow: "rgba(200,220,255,.95)", col: "#ffffff" },
-    { i: 2, cx: 1364, cy: 700, w: 290, flag: 60, name: 50, mgr: 21, glow: "rgba(255,160,90,.95)", col: "#ffe6d2" },
+    { i: 0, x0: 712, x1: 960, y0: 767, y1: 813, size: 50, cols: ["#0b0a08", "#030202", "#15100a"], glow: "rgba(255,200,80,.9)", col: "#fff4cf" },
+    { i: 1, x0: 255, x1: 490, y0: 727, y1: 773, size: 42, cols: ["#001330", "#000510", "#000c24"], glow: "rgba(170,200,255,.9)", col: "#ffffff" },
+    { i: 2, x0: 1195, x1: 1424, y0: 750, y1: 796, size: 42, cols: ["#01102a", "#000410", "#010c20"], glow: "rgba(255,160,90,.9)", col: "#ffe6d2" },
   ];
-  x.textBaseline = "top";
+  x.textBaseline = "middle";
   for (const sl of slots) {
     const p = podium[sl.i];
     if (!p) continue;
-    const cx = sl.cx * k, w = sl.w * k;
-    // Höhe des ganzen Blocks berechnen und senkrecht mittig setzen
-    const nameTxt = p.club.toUpperCase();
-    const nsz = fit(x, nameTxt, '{s}px "Bebas Neue"', Math.round(sl.name * k), w);
-    const blockH = sl.flag * k + 6 * k + nsz + 4 * k + (p.mgr ? sl.mgr * k : 0);
-    let y = sl.cy * k - blockH / 2;
-    const code = club(p.club)?.code;
-    if (code) {
-      try {
-        const im = await loadImage(path.join(dir, `flags/${code}.png`));
-        const fs_ = sl.flag * k;
-        x.shadowColor = "rgba(0,0,0,.6)"; x.shadowBlur = 10 * k;
-        x.drawImage(im, cx - fs_ / 2, y, fs_, fs_);
-        y += fs_ + 6 * k;
-      } catch {}
-    }
-    // Vereinsname
+    const X0 = sl.x0 * k, X1 = sl.x1 * k, Y0 = sl.y0 * k, Y1 = sl.y1 * k;
+    // Platzhalter-Text überdecken (Verlauf wie das Schild)
+    const gr = x.createLinearGradient(0, Y0, 0, Y1);
+    gr.addColorStop(0, sl.cols[0]); gr.addColorStop(0.5, sl.cols[1]); gr.addColorStop(1, sl.cols[2]);
+    x.shadowColor = "transparent"; x.fillStyle = gr; rr(x, X0, Y0, X1 - X0, Y1 - Y0, 6 * k); x.fill();
+    // EA-ID
     const name = p.club.toUpperCase();
-    const ns = fit(x, name, '{s}px "Bebas Neue"', Math.round(sl.name * k), w);
-    x.shadowColor = sl.glow; x.shadowBlur = 18 * k; x.fillStyle = sl.col;
-    x.fillText(name, cx - x.measureText(name).width / 2, y);
-    x.shadowBlur = 6 * k; x.shadowColor = "rgba(0,0,0,.9)";
-    x.fillText(name, cx - x.measureText(name).width / 2, y);
-    y += ns + 4 * k;
-    // Manager
+    fit(x, name, '{s}px "Bebas Neue"', Math.round(sl.size * k), (X1 - X0) - 10 * k, 16);
+    const cx = (X0 + X1) / 2, cy = (Y0 + Y1) / 2 + 2 * k;
+    x.shadowColor = sl.glow; x.shadowBlur = 14 * k; x.fillStyle = sl.col;
+    x.fillText(name, cx - x.measureText(name).width / 2, cy);
+    x.shadowColor = "rgba(0,0,0,.9)"; x.shadowBlur = 4 * k;
+    x.fillText(name, cx - x.measureText(name).width / 2, cy);
+    // Discord-Name klein unter dem Schild
     if (p.mgr) {
       const m = "@" + p.mgr;
-      fit(x, m, '600 {s}px Montserrat', Math.round(sl.mgr * k), w, 12);
-      x.shadowColor = "rgba(0,0,0,.9)"; x.shadowBlur = 8 * k; x.fillStyle = "#9fd0ff";
-      x.fillText(m, cx - x.measureText(m).width / 2, y);
+      fit(x, m, '600 {s}px Montserrat', Math.round((sl.i === 0 ? 22 : 19) * k), (X1 - X0), 10);
+      x.shadowColor = "rgba(0,0,0,.95)"; x.shadowBlur = 8 * k; x.fillStyle = "#9fd0ff";
+      x.fillText(m, cx - x.measureText(m).width / 2, Y1 + (sl.i === 0 ? 30 : 26) * k);
     }
   }
+  x.textBaseline = "top";
   // Unten: Cup und Finale
   const line = `${title}${sub ? "   ·   " + sub : ""}`;
   fit(x, line, '600 {s}px Montserrat', Math.round(22 * k), W - 120 * k, 12);

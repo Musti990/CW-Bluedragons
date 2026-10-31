@@ -1,7 +1,7 @@
 // Abläufe mit Discord-Auswirkungen: Posts, Rollen, Phasenwechsel.
 import { coIds, isCo } from "./co.mjs";
 import { get, set, del, mutate, keys, getConfig, getClubs, tKey } from "./store.mjs";
-import { sendMessage, editMessage, upsertMessage, sendWithFile, deleteMessage } from "./discord.mjs";
+import { sendFiles, sendMessage, editMessage, upsertMessage, sendWithFile, deleteMessage } from "./discord.mjs";
 import { enqueue } from "./roles.mjs";
 import * as T from "./tournament.mjs";
 import * as V from "./views.mjs";
@@ -216,8 +216,8 @@ export async function doCheckinEnd(channelId) {
   for (const x of result.forfeited) for (const u of t.members[x.club] || []) ops.push({ u, rem: [cfg.roles.groups?.[x.group]], why: "Nicht eingecheckt" });
   await enqueue(ops);
   const lines = [
-    ...result.replaced.map((x) => `🔁 **Gruppe ${x.group}:** ${flagOf(x.old)} ${V.esc(x.old)} nicht eingecheckt → ${flagOf(x.new)} **${V.esc(x.new)}** rückt nach.`),
-    ...result.forfeited.map((x) => `❌ **Gruppe ${x.group}:** ${flagOf(x.club)} ${V.esc(x.club)} nicht eingecheckt – alle Spiele werden mit 0:3 gewertet.`),
+    ...result.replaced.map((x) => `🔁 **${t.league ? "Liga" : "Gruppe " + x.group}:** ${flagOf(x.old)} ${V.esc(x.old)} nicht eingecheckt → ${flagOf(x.new)} **${V.esc(x.new)}** rückt nach.`),
+    ...result.forfeited.map((x) => `❌ **${t.league ? "Liga" : "Gruppe " + x.group}:** ${flagOf(x.club)} ${V.esc(x.club)} nicht eingecheckt – alle Spiele werden mit 0:3 gewertet.`),
   ];
   await refreshSignup(t);
   await sendMessage(channelId, { content: `🔒 **Check-in beendet.** ${t.playing.length - t.out.length} Spieler sind dabei. Anpfiff um <t:${Math.floor(t.times.kickoff / 1000)}:t> – die Spielpläne stehen in euren Gruppenkanälen.${lines.length ? "\n\n" + lines.join("\n") : ""}` });
@@ -235,6 +235,59 @@ export async function doCheckinEnd(channelId) {
   return fresh;
 }
 
+// ---------- Spielplan-Grafiken (CW-Look) ----------
+const gfxRow = (m) => ({ home: m.home, away: m.away, h: m.status === "fertig" ? m.h : null, a: m.status === "fertig" ? m.a : null, pen: m.status === "fertig" ? m.pen : null });
+
+/** Spieltag-Bild + Tabelle für eine Gruppe (bzw. die Liga). Neu posten (fresh) oder die letzte Nachricht aktualisieren. */
+export async function refreshGroupGraphic(t, gName, { fresh: isNew = false } = {}) {
+  try {
+    const cfg = await getConfig();
+    const ch = cfg.channels["g" + gName];
+    if (!ch || !["gruppen", "ko", "fertig"].includes(t.status)) return;
+    const g = t.groups.find((x) => x.name === gName); if (!g) return;
+    const round = t.status === "gruppen" ? t.round : t.maxRounds;
+    const ms = t.matches.filter((m) => m.phase === "gruppe" && m.group === gName && m.round === round);
+    if (!ms.length && !isNew) return;
+    const clubs = await getClubs();
+    const pf = (c) => clubs[c]?.platform || null;
+    const G = await import("./graphics.mjs");
+    const label = t.league ? "Liga" : `Gruppe ${gName}`;
+    const d = (await import("./data.mjs")).FORMATS[t.fmt] || { top: 2, ex: 0 };
+    const rows = T.standings(t, gName).map((r) => ({ name: r.id, platform: pf(r.id), sp: r.sp, s: r.s, u: r.u, n: r.n, td: r.t - r.gt, p: r.p, out: t.out.includes(r.id) }));
+    const files = [];
+    if (ms.length) files.push({ name: `spieltag-${gName}-${round}.png`, buffer: await G.roundImage({ title: `${label} · Spieltag ${round}`, sub: t.name, matches: ms.map((m) => ({ ...gfxRow(m), hp: pf(m.home), ap: pf(m.away) })) }) });
+    files.push({ name: `tabelle-${gName}.png`, buffer: await G.tableImage({ title: t.league ? "Liga · Tabelle" : `Gruppe ${gName}`, sub: t.name, label: t.league ? "Ligasystem" : `Gruppe ${gName}`, info: t.league ? `K.-o.-Phase: Top ${d.top} → ${T.koRoundName({ koSize: (await import("./data.mjs")).KO_SIZE[t.fmt] }, 1)}` : `K.-o.-Phase: Platz 1${d.top > 1 ? " + 2" : ""}`, rows, qualify: d.top, maybe: d.ex ? 1 : 0 }) });
+    const cur = (await get(tKey(t.channelId)))?.msgs?.gfx?.[gName];
+    const payload = { content: `📊 **${label} · Spieltag ${round}**` };
+    let id = cur?.id && cur.round === round && !isNew ? cur.id : null;
+    const res = await sendFiles(ch, payload, files, id);
+    if (!res && id) id = null;
+    const newId = res?.id || null;
+    if (!id && newId) await mutate(tKey(t.channelId), (x) => { x.msgs = x.msgs || {}; x.msgs.gfx = x.msgs.gfx || {}; x.msgs.gfx[gName] = { id: newId, round }; });
+  } catch (e) { console.error("Gruppen-Grafik:", e?.message || e); }
+}
+
+/** K.-o.-Runde als Bild im KO-Kanal (neu bei jeder Runde, danach aktualisieren) */
+export async function refreshKOGraphic(t, { fresh: isNew = false } = {}) {
+  try {
+    const cfg = await getConfig();
+    if (!cfg.channels.ko || !["ko", "fertig"].includes(t.status)) return;
+    const round = t.koRound;
+    const ms = t.matches.filter((m) => m.phase === "ko" && m.round === round).sort((a, b) => (a.final ? 0 : 1) - (b.final ? 0 : 1) || a.slot - b.slot);
+    if (!ms.length) return;
+    const clubs = await getClubs();
+    const pf = (c) => clubs[c]?.platform || null;
+    const isFinal = ms.some((m) => m.final);
+    const title = isFinal ? (ms.some((m) => m.p3) ? "Finale & Platz 3" : "Finale") : T.koRoundName(t, round);
+    const G = await import("./graphics.mjs");
+    const img = await G.roundImage({ title, sub: t.name, matches: ms.map((m) => ({ ...gfxRow(m), hp: pf(m.home), ap: pf(m.away) })) });
+    const cur = (await get(tKey(t.channelId)))?.msgs?.gfxKo;
+    let id = cur?.id && cur.round === round && !isNew ? cur.id : null;
+    const res = await sendFiles(cfg.channels.ko, { content: `📊 **${title}**` }, [{ name: `ko-runde-${round}.png`, buffer: img }], id);
+    if (!id && res?.id) await mutate(tKey(t.channelId), (x) => { x.msgs = x.msgs || {}; x.msgs.gfxKo = { id: res.id, round }; });
+  } catch (e) { console.error("KO-Grafik:", e?.message || e); }
+}
+
 /** Gruppenkanal leeren (Spielplan und ggf. Ergebnis-Panel bleiben) und Freigabe posten */
 async function postGroupFreigabe(t, g, round, cfg) {
   const ch = cfg.channels["g" + g.name], role = cfg.roles.groups?.[g.name];
@@ -243,6 +296,7 @@ async function postGroupFreigabe(t, g, round, cfg) {
   const keep = [fresh.msgs?.groups?.[g.name]?.plan, fresh.msgs?.groups?.[g.name]?.res];
   try { await purgeExcept(ch, keep); } catch (e) { console.error("Gruppenkanal leeren:", e?.message || e); }
   await sendMessage(ch, V.freigabePost(t, g, round, role, cfg.channels["r" + g.name]));
+  await refreshGroupGraphic((await get(tKey(t.channelId))) || t, g.name, { fresh: true });
 }
 
 /** KO-Kanal leeren (Turnierbaum und ggf. Ergebnis-Panel bleiben) und die neue Runde posten */
@@ -251,6 +305,7 @@ async function postKoFreigabe(t, cfg) {
   const fresh = (await get(tKey(t.channelId))) || t;
   try { await purgeExcept(cfg.channels.ko, [fresh.msgs?.bracket, fresh.msgs?.koRes]); } catch (e) { console.error("KO-Kanal leeren:", e?.message || e); }
   await sendMessage(cfg.channels.ko, V.koRoundPost(t, t.members, cfg.roles.rounds || {}, cfg.channels.kor));
+  await refreshKOGraphic((await get(tKey(t.channelId))) || t, { fresh: true });
 }
 
 export async function doKickoff(channelId) {
@@ -324,8 +379,17 @@ export async function afterResult(t, m, events, byAdmin = false) {
   if (ch) await sendMessage(ch, V.resultConfirmed(m, byAdmin));
   await closeAsk(t, m, m.auto ? "auto" : "bestaetigt");
   if (m.phase === "gruppe") await refreshGroupPlan(t, m.group); else { await refreshBracket(t); if (!events?.length) await refreshKOResultPanel(t); }
+  // Grafik des gerade gespielten Spieltags/der Runde mit dem neuen Ergebnis aktualisieren
+  if (m.phase === "gruppe") { if (!events?.some((e) => e.type === "spieltag")) await refreshGroupGraphicFor(t, m); }
+  else if (!events?.some((e) => e.type === "ko-runde")) await refreshKOGraphic(t);
   await refreshLive(t);
   await handleEvents(t, events);
+}
+
+/** Gruppen-Grafik für den Spieltag des Spiels aktualisieren (auch wenn schon die nächste Runde läuft) */
+async function refreshGroupGraphicFor(t, m) {
+  const view = { ...t, status: "gruppen", round: m.round };
+  await refreshGroupGraphic(view, m.group);
 }
 
 export async function askOpponent(t, m, reporterClub, h, a, pen) {
@@ -395,7 +459,7 @@ async function startKOSideEffects(t, cfg) {
   for (const c of t.qualified) { const r = T.koRoleOf(t, c); for (const u of t.members[c] || []) ops.push({ u, add: [cfg.roles.rounds?.[r], cfg.roles.koPhase], why: `K.-o.-Phase: ${r}` }); }
   await enqueue(ops);
   for (const g of t.groups) await refreshGroupPlan(t, g.name);
-  await sendMessage(t.channelId, { content: `⭐ **Die Gruppenphase ist beendet!** ${t.koSize} Spieler stehen im ${T.koRoundName(t, 1)}.` });
+  await sendMessage(t.channelId, { content: `⭐ **Die ${t.league ? "Ligaphase" : "Gruppenphase"} ist beendet!** ${t.koSize} Spieler stehen im ${T.koRoundName(t, 1)}.` });
   await postKoFreigabe(t, cfg);
   await refreshBracket(t);
   await refreshKOResultPanel(await get(tKey(t.channelId)), true);

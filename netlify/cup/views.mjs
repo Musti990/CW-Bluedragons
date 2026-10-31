@@ -161,6 +161,10 @@ function formatBlock(n, closed) {
   };
   if (!f) return `**⚠️ Noch kein Format**\nMindestens **8 Spieler** nötig, damit der Cup stattfindet.\n${prog(0, 8)}`;
   const d = FORMATS[f], mixed = new Set(d.g).size > 1;
+  if (d.league) {
+    const bar = Array.from({ length: f }, (_, p) => (p < d.top ? SQ.g : SQ.x)).join("");
+    return `**🏟️ Format: ${f}er · Ligasystem**\n**Eine Tabelle** · **${d.rounds} Spieltage** gegen zufällige Gegner  ·  **Weiter:** Top ${d.top}  ·  **K.-o. ab:** ${KO_NAME[KO_SIZE[f]]}\n${bar}\n${SQ.g} **Platz 1–${d.top}** ${SQ.x} **raus**${closed ? "" : "\n" + prog(f, next)}`;
+  }
   const grid = d.g.map((s, k) => `\`${"ABCDEFGH"[k]}\` ${Array.from({ length: s }, (_, p) => (p < d.top ? SQ.g : p === d.top && d.ex ? SQ.y : SQ.x)).join("")}`);
   const rows = [];
   for (let i = 0; i < grid.length; i += 2) rows.push(grid.slice(i, i + 2).join("   "));
@@ -171,7 +175,7 @@ function formatBlock(n, closed) {
 const STATUS = {
   anmeldung: "🟢 **Anmeldung offen**",
   checkin: "🟡 **Check-in läuft** in den Gruppenkanälen",
-  gruppen: "⚽ **Gruppenphase läuft**",
+  gruppen: "⚽ **Gruppen-/Ligaphase läuft**",
   ko: "🔥 **K.-o.-Phase läuft**",
   fertig: "🏆 **Turnier beendet**",
   abgesagt: "⚠️ **Cup abgesagt** – zu wenige Spieler",
@@ -225,6 +229,14 @@ export function signupPanel(t, clubs = {}) {
 
 export function drawPost(t) {
   const d = FORMATS[t.fmt];
+  if (d.league) {
+    const list = t.groups[0].teams.map((c) => `${flagOf(c)} ${esc(c)}`);
+    const half = Math.ceil(list.length / 2);
+    return {
+      content: `🔒 **Anmeldung geschlossen – ${t.fmt}er-Format · Ligasystem.** Check-in läuft jetzt bis ${hhmm(t.times.checkinEnd)} im Liga-Kanal.${t.wait.length ? ` ${t.wait.length} ${t.wait.length === 1 ? "Spieler steht" : "Spieler stehen"} auf der Warteliste und checkt oben im Anmelde-Post ein.` : ""}`,
+      embeds: [{ color: COLOR, title: `⭐ Auslosung · ${t.fmt}er-Format · Liga`, description: `**${d.rounds} Spieltage** gegen zufällige Gegner (nie zweimal derselbe) · **Top ${d.top} → ${KO_NAME[KO_SIZE[t.fmt]]}**`, fields: [{ name: "Teilnehmer", value: list.slice(0, half).join("\n"), inline: true }, { name: "\u200b", value: list.slice(half).join("\n") || "\u200b", inline: true }] }],
+    };
+  }
   const rule = d.top === 1 ? `alle Gruppensieger + ${d.ex} beste Zweite` : `Erste und Zweite${d.ex ? ` + ${d.ex} beste Dritte` : ""}`;
   return {
     content: `🔒 **Anmeldung geschlossen – ${t.fmt}er-Format.** Check-in läuft jetzt bis ${hhmm(t.times.checkinEnd)} in eurem Gruppenkanal.${t.wait.length ? ` ${t.wait.length} ${t.wait.length === 1 ? "Spieler steht" : "Spieler stehen"} auf der Warteliste und checkt oben im Anmelde-Post ein.` : ""}`,
@@ -240,7 +252,7 @@ export function groupCheckin(t, g, roleId) {
     content: open && roleId ? `<@&${roleId}>` : "",
     allowed_mentions: { roles: open && roleId ? [roleId] : [] },
     embeds: [{
-      color: COLOR, title: `⭐ Gruppe ${g.name} · Check-in`,
+      color: COLOR, title: `⭐ ${t.league ? "Liga" : "Gruppe " + g.name} · Check-in`,
       description: (open ? `Bitte bis ${hhmm(t.times.checkinEnd)} einchecken. Wer nicht eincheckt, wird durch die Warteliste ersetzt.\n\n` : "") + lines.join("\n") + `\n\n-# Eingecheckt: ${g.teams.filter((c) => t.checked.includes(c)).length}/${g.teams.length}`,
     }],
     components: open ? [row(btn("Einchecken", "grp_ci", 3, { emoji: { name: "✅" } }))] : [],
@@ -274,7 +286,7 @@ export function groupPlan(t, g, resultChannel) {
   const desc = rounds.map((r) => `**Spieltag ${r}**\n` + ms.filter((m) => m.round === r).map(line).join("\n")).join("\n\n");
   const fallback = t.status === "gruppen" && !resultChannel; // ohne Ergebniskanal bleiben die Buttons hier
   return {
-    embeds: [{ color: COLOR, title: `📋 Gruppe ${g.name} · Spielplan`, description: desc.slice(0, 4096) }],
+    embeds: [{ color: COLOR, title: `📋 ${t.league ? "Liga" : "Gruppe " + g.name} · Spielplan`, description: desc.slice(0, 4096) }],
     components: fallback ? [row(btn("Ergebnis melden", "res_open", 1, { emoji: { name: "⚽" } }))] : [],
   };
 }
@@ -333,7 +345,7 @@ export function livePlan(t) {
         const td = x.t - x.gt;
         return `${mark} \`${k + 1}\` ${flagOf(x.id)} ${esc(x.id)} · **${x.p} Pkt** · TD ${td > 0 ? "+" + td : td}`;
       });
-      parts.push(`### ⚽ Gruppe ${g.name} · Spieltag ${r}\n${ms.length ? ms.map(mline).join("\n") : "_spielfrei_"}\n\n${tab.join("\n")}`.slice(0, budget));
+      parts.push(`### ⚽ ${t.league ? "Liga" : "Gruppe " + g.name} · Spieltag ${r}\n${ms.length ? ms.map(mline).join("\n") : "_spielfrei_"}\n\n${tab.join("\n")}`.slice(0, budget));
     }
   }
   if (t.status === "ko") {
@@ -460,7 +472,7 @@ export function resultPanel(t, g) {
   return {
     embeds: [{
       color: COLOR,
-      title: `📋 Gruppe ${g.name} · Ergebnisse`,
+      title: `📋 ${t.league ? "Liga" : "Gruppe " + g.name} · Ergebnisse`,
       description:
         "Hier tragt ihr eure Ergebnisse ein.\n\n" +
         "• **Ergebnis eintragen:** ein Spieler trägt ein, der Gegner hat **2 Minuten** zum Bestätigen – sonst gilt das Ergebnis. Bei unterschiedlichen Ergebnissen wird die Turnierleitung markiert.\n" +
@@ -569,7 +581,7 @@ export function freigabePost(t, g, round, roleId, resultCh) {
     flags: V2,
     allowed_mentions: { roles: roleId ? [roleId] : [] },
     components: [box(
-      txt(`${roleId ? `<@&${roleId}> ` : ""}\n## 🟢 FREIGABE · Spieltag ${round}\nGruppe ${g.name} – **ihr dürft jetzt spielen!**\n${freigabeWindow()}`),
+      txt(`${roleId ? `<@&${roleId}> ` : ""}\n## 🟢 FREIGABE · Spieltag ${round}${t.league ? ` von ${t.maxRounds}` : ""}\n${t.league ? "Liga" : "Gruppe " + g.name} – **ihr dürft jetzt spielen!**\n${freigabeWindow()}`),
       line(),
       txt("### ⚽ Paarungen\n" + (pairs.length ? pairs.join("\n") : "_spielfrei_") + (bye.length ? `\n\n💤 Spielfrei: ${bye.map((c) => `${flagOf(c)} ${esc(c)}`).join(", ")}` : "")),
       line(),

@@ -86,7 +86,7 @@ const COMMANDS = [
       { type: 1, name: "freilos-entfernen", description: "Ein Freilos aus der Anmeldeliste dieses Kanals entfernen" },
       { type: 1, name: "abbrechen", description: "Laufendes Turnier abbrechen und Rollen entfernen" },
       { type: 1, name: "testcup-start", description: "Test-Cup allein testen: du + Testspieler, ohne Statistik", options: [
-        { type: 4, name: "teams", description: "Anzahl Spieler (8 = mit Halbfinale, 16 = mit Viertelfinale)", required: false, choices: [{ name: "8 Spieler", value: 8 }, { name: "16 Spieler", value: 16 }] },
+        { type: 4, name: "teams", description: "Anzahl Spieler (8/16 = Gruppen, 12/20 = Ligasystem)", required: false, choices: [{ name: "8 Spieler (Gruppen → Halbfinale)", value: 8 }, { name: "12 Spieler (Liga → Viertelfinale)", value: 12 }, { name: "16 Spieler (Gruppen → Viertelfinale)", value: 16 }, { name: "20 Spieler (Liga → Viertelfinale)", value: 20 }] },
       ] },
       { type: 1, name: "testcup-weiter", description: "Spiele zwischen Testspielern sofort ausspielen" },
       { type: 1, name: "rollen-check", description: "Prüfen, ob alle Cup-Teilnehmer die richtigen Gruppen-/KO-Rollen haben, und korrigieren" },

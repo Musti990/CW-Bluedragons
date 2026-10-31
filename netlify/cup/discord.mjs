@@ -62,6 +62,14 @@ export async function sendWithFile(ch, payload, filename, buffer, type = "image/
   return discord(`/channels/${ch}/messages`, "POST", undefined, { form });
 }
 
+/** Nachricht mit mehreren Bildern senden bzw. (mit id) bearbeiten – files: [{ name, buffer }] */
+export async function sendFiles(ch, payload, files, id = null) {
+  const form = new FormData();
+  form.append("payload_json", JSON.stringify({ allowed_mentions: NO_PINGS, ...payload, attachments: files.map((f, k) => ({ id: k, filename: f.name })) }));
+  files.forEach((f, k) => form.append(`files[${k}]`, new Blob([f.buffer], { type: "image/png" }), f.name));
+  return discord(`/channels/${ch}/messages${id ? "/" + id : ""}`, id ? "PATCH" : "POST", undefined, { form });
+}
+
 const guild = () => (process.env.CUP_GUILD_ID || process.env.GUILD_ID);
 export const addRole = (user, role, reason) => discord(`/guilds/${guild()}/members/${user}/roles/${role}`, "PUT", undefined, { reason });
 export const removeRole = (user, role, reason) => discord(`/guilds/${guild()}/members/${user}/roles/${role}`, "DELETE", undefined, { reason });
