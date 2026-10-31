@@ -4,7 +4,8 @@
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["impit", "sharp"]
+  external_node_modules = ["impit", "sharp", "@napi-rs/canvas"]
+  included_files = ["netlify/cup-assets/**"]
 
 # /session: alle 2 Minuten auf neue Spiele prüfen (ohne aktive Session passiert nichts)
 [functions."session-check"]
