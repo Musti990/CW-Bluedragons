@@ -30,17 +30,18 @@ Im Browser öffnen: `https://DEINE-SEITE.netlify.app/api/cup/setup?key=DEIN_CUP_
 ```
 /ut-einrichten alles anpfiff: 20:00
 ```
-Legt die Rollen (**UT Turnierleitung**, **UT Spieler**, **UT Gruppe A–H**, **UT Achtelfinale** …) und alle Kanäle an. Alle Cup-Kanäle beginnen mit **UT-** (z. B. 𝐔𝐓-𝐌𝐨𝐧𝐭𝐚𝐠), deshalb werden bestehende Kanäle des Servers nie angefasst. Danach:
+Legt die Rollen (**UT Turnierleitung**, **UT Spieler**, **UT Gruppe A–H**, **UT Achtelfinale** …) und die Cup-Kanäle an (Registrieren, Mein-Profil, Spielerübersicht, Live-Spielplan, Hall of Fame, Trophäenhalle, Gruppen, K.-o.). **Kein** Regelwerk-, Sperrlisten- oder Tageskanal – die Anmeldelisten kommen in eure eigenen Kanäle (siehe unten). Alle Cup-Kanäle beginnen mit **UT-** (z. B. 𝐔𝐓-𝐌𝐨𝐧𝐭𝐚𝐠), deshalb werden bestehende Kanäle des Servers nie angefasst. Danach:
 - Die Rolle des Cup-Bots in der Rollenliste **ganz nach oben** ziehen.
 - Dir selbst die Rolle **UT Turnierleitung** geben (Server-Admins dürfen sowieso alles).
 - `/ut-einrichten status` zeigt, was noch fehlt.
+- **Anmeldelisten:** Für jeden Cup-Tag einmal im gewünschten Kanal `/ut-zeitplan setzen tag: Montag anpfiff: 20:00` ausführen (ohne `kanal` = der Kanal, in dem du schreibst). Oder ein einzelnes Turnier mit `/ut-turnier`.
 
 ## 5. Allein testen (Test-Cup)
 
 > Tipp: Solange du testest, die neuen Kategorien (🐉 UT CUP · INFO, 🏆 ULTIMATE TEAM CUP …) in Discord für @everyone ausblenden – dann sieht noch niemand den Cup.
 
 
-1. Selbst registrieren: im Kanal **UT-Regelwerk** akzeptieren, dann **UT-Registrieren** → Plattform → EA-ID.
+1. Selbst registrieren: **UT-Registrieren** → Plattform → EA-ID.
 2. In einem beliebigen Testkanal: `/ut-admin testcup-start teams: 8` → du + 7 Testspieler.
 3. `/ut-admin anmeldeschluss` → Auslosung, im Gruppenkanal **Einchecken**.
 4. `/ut-admin checkin-ende` → Spieltag 1 wird freigegeben.

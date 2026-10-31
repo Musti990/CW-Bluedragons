@@ -75,28 +75,40 @@ export function freeAgainPost(c, reason) {
 // ---------- Mein Profil ----------
 export function teamPanel() {
   return {
-    embeds: [{ color: COLOR, title: "🛡️ MEIN PROFIL", description: "Hier siehst du dein Profil und deine Statistik, änderst deine EA-ID oder Plattform oder löschst dein Profil.\nDas Fenster siehst nur du.", thumbnail: { url: `${site()}/blue-dragons-logo.png` }, footer: FOOTER }],
+    embeds: [{ color: COLOR, title: "🛡️ MEIN PROFIL", description: "Hier siehst du dein Profil mit **deinen Stats** (Titel, Bilanz, Tore, Siegquote), änderst deine EA-ID oder Plattform oder löschst dein Profil.\nDas Fenster siehst nur du.", thumbnail: { url: `${site()}/blue-dragons-logo.png` }, footer: FOOTER }],
     components: [row(btn("Mein Profil öffnen", "team_open", 1, { emoji: { name: "🛡️" } }))],
   };
 }
 
-export function teamDetail(c, data) {
+export function teamDetail(c, data, st = null) {
   const p = platformOf(c);
+  const x = st || { g: 0, s: 0, b: 0, cups: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 };
+  const games = x.w + x.d + x.l, td = x.gf - x.ga;
+  const quote = games ? Math.round((x.w / games) * 100) : 0;
+  const vit = "🏆".repeat(Math.min(x.g, 10)) + (x.s ? " " + "🥈".repeat(Math.min(x.s, 10)) : "") + (x.b ? " " + "🥉".repeat(Math.min(x.b, 10)) : "");
   return {
     content: "",
     embeds: [{
       color: COLOR,
       title: `${flagOf(c)} ${c}`,
-      description: `<@${data.manager}> · ${p ? p.name : "Plattform unbekannt"}${data.fav ? ` · ❤️ ${esc(data.fav)}` : ""}`,
+      description: `<@${data.manager}> · ${p ? p.name : "Plattform unbekannt"}${data.fav ? ` · ❤️ ${esc(data.fav)}` : ""}\n📅 Registriert ${data.since ? `<t:${Math.floor(data.since / 1000)}:D>` : "–"}`,
+      thumbnail: { url: `${site()}/blue-dragons-logo.png` },
       fields: [
-        { name: "🏆 Titel", value: String(data.titles ?? 0), inline: true },
-        { name: "🎟️ Cups", value: String(data.cups ?? 0), inline: true },
-        { name: "📅 Registriert", value: data.since ? `<t:${Math.floor(data.since / 1000)}:D>` : "–", inline: true },
+        { name: "🏆 Titel", value: `**${x.g}**`, inline: true },
+        { name: "🥈 Finals", value: `**${x.s}**`, inline: true },
+        { name: "🥉 Platz 3", value: `**${x.b}**`, inline: true },
+        { name: "🎟️ Cups", value: `**${x.cups}**`, inline: true },
+        { name: "⚽ Spiele", value: `**${games}**`, inline: true },
+        { name: "📈 Siegquote", value: `**${quote} %**`, inline: true },
+        { name: "✅ Bilanz", value: `${x.w} S · ${x.d} U · ${x.l} N`, inline: true },
+        { name: "🥅 Tore", value: `${x.gf}:${x.ga} (${td > 0 ? "+" + td : td})`, inline: true },
+        { name: "⌀ Tore/Spiel", value: games ? (x.gf / games).toFixed(1).replace(".", ",") : "–", inline: true },
+        { name: "🏅 Vitrine", value: vit || "noch leer – hol dir den ersten Titel!", inline: false },
       ],
-      footer: { text: "Statistik: Button „Meine Statistik“ in der Trophäenhalle" },
+      footer: { text: "CW Bluedragons · Ultimate Team Cup · nur du siehst dieses Fenster" },
     }],
     components: [
-      row(btn("EA-ID ändern", "team_ea", 1, { emoji: { name: "✏️" } }), btn("Plattform ändern", "team_pf", 2, { emoji: { name: "🎮" } })),
+      row(btn("Aktualisieren", "team_open", 2, { emoji: { name: "🔄" } }), btn("EA-ID ändern", "team_ea", 1, { emoji: { name: "✏️" } }), btn("Plattform ändern", "team_pf", 2, { emoji: { name: "🎮" } })),
       row(btn("Profil löschen", "team_del", 4, { emoji: { name: "🗑️" } })),
     ],
   };

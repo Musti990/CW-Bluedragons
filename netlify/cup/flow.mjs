@@ -53,6 +53,8 @@ export async function refreshHofHeader() {
 
 // ---------- Regelwerk ----------
 export async function rulesAccepted(uid) {
+  // Ohne Regelwerk-Kanal gibt es nichts zu akzeptieren
+  if (!(await getConfig()).channels?.rules) return true;
   const r = (await get("rules")) || {};
   return r[uid] === RULES_VERSION;
 }

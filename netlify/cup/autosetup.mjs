@@ -26,7 +26,7 @@ export function toBold(s) {
     }).join("");
   }).join("");
 }
-const fancy = toBold;
+const fancy = (s) => toBold(String(s).toUpperCase()); // Cup-Kanäle in fetten GROSSBUCHSTABEN
 
 /** Kanal-Plan: Schlüssel, Name beim Anlegen, Kategorie, Rechte-Profil.
  *  Alle Cup-Kanäle beginnen mit „UT-“, damit sie nie mit anderen Kanälen des Servers verwechselt werden. */
@@ -36,11 +36,11 @@ const PLAN = [
   { key: "reg", name: "📝・" + fancy("UT-Registrieren"), cat: "info", prof: "public" },
   { key: "team", name: "🛡️・" + fancy("UT-Mein-Profil"), cat: "info", prof: "managers" },
   { key: "over", name: "📋・" + fancy("UT-Spieleruebersicht"), cat: "info", prof: "public" },
-  ...DAYS.map((d, i) => ({ key: "day" + (i + 1), name: "🗓️・" + fancy("UT-" + d), cat: "cup", prof: "public", day: i + 1 })),
+  { key: "signup", name: "📝・" + fancy("UT-Anmeldung"), cat: "cup", prof: "public" },
+  { key: "chat", name: "💬・" + fancy("UT-Turnier-Chat"), cat: "cup", prof: "chat" },
   { key: "live", name: "📺・" + fancy("UT-Live-Spielplan"), cat: "cup", prof: "public" },
   { key: "hof", name: "🏆・" + fancy("UT-Hall-of-Fame"), cat: "cup", prof: "public" },
   { key: "trophy", name: "🏅・" + fancy("UT-Trophaeenhalle"), cat: "cup", prof: "public" },
-  { key: "ban", name: "🚫・" + fancy("UT-Sperrliste"), cat: "cup", prof: "public" },
   { key: "log", name: "📢・" + fancy("UT-Turnierleitung"), cat: "cup", prof: "staff" },
   ...GROUP_NAMES.flatMap((g) => [
     { key: "g" + g, name: "⚽・" + fancy("UT-Gruppe-" + g), cat: "groups", prof: "group:" + g },
@@ -64,7 +64,7 @@ export function detectKey(rawName) {
   if (n.includes("kophase")) return "ko";
   const day = DAYS.findIndex((d) => n === d.toLowerCase());
   if (day >= 0) return "day" + (day + 1);
-  const map = [["benachrichtigung", "notify"], ["regelwerk", "rules"], ["registrieren", "reg"], ["meinprofil", "team"], ["spieleruebersicht", "over"], ["livespielplan", "live"], ["halloffame", "hof"], ["trophaeen", "trophy"], ["sperrliste", "ban"], ["turnierleitung", "log"]];
+  const map = [["turnierchat", "chat"], ["anmeldung", "signup"], ["benachrichtigung", "notify"], ["regelwerk", "rules"], ["registrieren", "reg"], ["meinprofil", "team"], ["spieleruebersicht", "over"], ["livespielplan", "live"], ["halloffame", "hof"], ["trophaeen", "trophy"], ["sperrliste", "ban"], ["turnierleitung", "log"]];
   for (const [kw, key] of map) if (n.includes(kw)) return key;
   if (n === "regeln") return "rules";
   if (n === "admin") return "admin";
@@ -81,6 +81,8 @@ function overwrites(prof, roles) {
   const lead = see(roles.turnierleitung, P.SEND, P.FILES);
   // Eingang: Willkommen, Regelwerk, Rollenauswahl – sieht jeder, auch ohne Rolle
   if (prof === "entry" || prof === "public") return [ro];
+  // Turnier-Chat: alle dürfen lesen und schreiben
+  if (prof === "chat") return [{ id: everyone, type: 0, allow: bits(P.VIEW, P.SEND, P.HISTORY, P.EMBED, P.FILES), deny: "0" }];
   // Alles andere: erst mit Rolle Spieler oder Manager (Staff sieht immer mit)
   if (prof === "members") return [ro, lead].filter(Boolean);
   if (prof === "managers") return [hide, seeRO(roles.manager), lead].filter(Boolean);

@@ -119,3 +119,9 @@ export async function renameClub(oldName, newName) {
   }, { initial: init() });
   await refreshTrophyPanel();
 }
+
+/** Statistik einer Person (für „Mein Profil“) */
+export async function personStats(uid) {
+  const S = { ...init(), ...((await get("stats")) || {}) };
+  return S.managers[uid] || null;
+}

@@ -222,7 +222,7 @@ async function setup(i, context, cfg) {
 
 async function schedule(i, context) {
   const sub = i.data.options[0], o = opts(sub.options);
-  o.kanal = o.kanal || i.channel_id; // ohne Auswahl: aktueller Kanal
+  o.kanal = o.kanal || (await getConfig()).channels?.signup || i.channel_id; // ohne Auswahl: UT-Anmeldung, sonst aktueller Kanal
   if (sub.name === "setzen") {
     const kickoff = parseTime(o.anpfiff), post = parseTime(o.posten ?? "12:00");
     if (!kickoff) return eph("Anpfiff bitte so angeben: `20:00`");
@@ -424,7 +424,8 @@ async function component(i, context) {
     const clubs = await getClubs();
     const mine = F.clubOfUser(clubs, uid);
     if (!mine) return reply(i, { content: `Du bist noch nicht registriert${cfg.channels.reg ? ` – das geht in <#${cfg.channels.reg}>` : ""}.`, embeds: [], components: [] });
-    const detail = (c, note) => ({ ...V.teamDetail(c.club, c.data), content: note || "" });
+    const st = await (await import("../cup/trophies.mjs")).personStats(uid);
+    const detail = (c, note) => ({ ...V.teamDetail(c.club, c.data, st), content: note || "" });
     const busy = async () => { for (const t of await F.allTournaments()) if (!["fertig", "abgesagt", "geloescht"].includes(t.status) && (t.reg.includes(mine.club) || t.playing.includes(mine.club) || (t.wait || []).includes(mine.club))) return true; return false; };
     if (id === "team_open") return reply(i, detail(mine));
     if (id === "team_ea") {
@@ -560,7 +561,7 @@ async function modal(i, context) {
     if (!ea) return reply(i, { content: "❌ Diese EA-ID passt nicht: 3–32 Zeichen, nur Buchstaben, Zahlen, Punkt, Unterstrich, Bindestrich oder Leerzeichen." });
     const clubs = await getClubs(), mine = F.clubOfUser(clubs, uid);
     if (!mine) return reply(i, { content: "Du bist nicht registriert.", embeds: [], components: [] });
-    if (ea === mine.club) return reply(i, { ...V.teamDetail(mine.club, mine.data), content: "Das ist schon deine EA-ID." });
+    if (ea === mine.club) return reply(i, { ...V.teamDetail(mine.club, mine.data, await (await import("../cup/trophies.mjs")).personStats(uid)), content: "Das ist schon deine EA-ID." });
     for (const t of await F.allTournaments()) if (!["fertig", "abgesagt", "geloescht"].includes(t.status) && [...t.reg, ...t.playing, ...(t.wait || [])].includes(mine.club)) return reply(i, { content: "⚠️ Während du für einen Cup angemeldet bist, geht das nicht.", embeds: [], components: [] });
     const { value, result } = await mutate("clubs", (cl) => {
       if (Object.keys(cl).some((k) => k !== mine.club && k.toLowerCase() === ea.toLowerCase())) return "vergeben";
@@ -574,7 +575,7 @@ async function modal(i, context) {
       await (await import("../cup/trophies.mjs")).renameClub?.(mine.club, ea);
       await F.refreshOverview();
     });
-    return reply(i, { ...V.teamDetail(ea, value[ea]), content: `✅ EA-ID geändert: \`${V.esc(mine.club)}\` → \`${V.esc(ea)}\`` });
+    return reply(i, { ...V.teamDetail(ea, value[ea], await (await import("../cup/trophies.mjs")).personStats(uid)), content: `✅ EA-ID geändert: \`${V.esc(mine.club)}\` → \`${V.esc(ea)}\`` });
   }
 
   if (id.startsWith("res:")) {

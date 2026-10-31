@@ -59,6 +59,8 @@ export const BASE_CHANNEL_TYPES = {
   rules: "Regelwerk",
   notify: "Benachrichtigungen",
   reg: "Spieler-registrieren",
+  signup: "Anmeldung (Cup-Listen)",
+  chat: "Turnier-Chat",
   team: "Mein-Profil",
   over: "Spielerübersicht",
   live: "Live-Spielplan",
@@ -95,18 +97,25 @@ export const VIDEO_WINDOW_MIN = 40; // nur bis zur 40. Spielminute (Spieluhr in 
 
 export const RULES_VERSION = 1; // erhöhen, wenn sich das Regelwerk ändert → alle müssen neu akzeptieren
 export const RULES = {
-  title: "🏆 CW BLUEDRAGONS · ULTIMATE TEAM CUP – REGELWERK",
+  title: "🏆 EA COMMUNITY WORLD – TURNIERREGELN 🏆",
+  // Roter Kasten unter dem Regelwerk
   highlight: {
-    title: "📸 SCREENSHOT-PFLICHT 📸",
-    text: "**Nach jedem Spiel postet der Sieger einen Screenshot vom Endstand im Ergebniskanal.**\nOhne Screenshot kann die Turnierleitung bei Streit nicht entscheiden – im Zweifel wird das Spiel neu angesetzt oder gegen dich gewertet.",
+    title: "✅ PFLICHT: TWITCH & TIKTOK FOLLOW",
+    text: "Für **beide** Accounts – Follows werden kontrolliert!\n💬 **Bonus:** Aktiv im Chat = Vorteile für zukünftige Turniere\n\n**Follow – Join – Support – Compete – Report – Win** 💪",
   },
   sections: [
-    ["🎮 Spielmodus", "• **1 gegen 1** in EA FC Ultimate Team (Freundschaftsspiel online)\n• Spielzeit **6 Minuten** pro Halbzeit, Schwierigkeit **Weltklasse**\n• Crossplay ist erlaubt – ladet euch über die **EA-ID** aus der Anmeldeliste ein"],
-    ["⏰ Pünktlichkeit", "• Check-in bis **5 Minuten vor Anpfiff** – sonst rückt die Warteliste nach\n• Wer **10 Minuten** nach Freigabe nicht erscheint, verliert das Spiel **0:3**"],
-    ["🔌 Verbindungsabbruch", "• Abbruch in der **1. Halbzeit**: Neustart, Spielstand wird übernommen\n• Abbruch in der **2. Halbzeit**: Das Ergebnis zum Zeitpunkt des Abbruchs zählt\n• Absichtliches Verlassen = **0:3** und Sperre"],
-    ["⚖️ Unentschieden", "• **Gruppenphase:** Unentschieden zählt (1 Punkt)\n• **K.-o.-Phase:** Verlängerung und Elfmeterschießen laufen im Spiel – das Elfmeterergebnis mit angeben"],
-    ["🤝 Respekt & Fair Play", "• Respektvoller Umgang mit allen Spielern\n• Keine Beleidigungen, kein Trashtalk über die Grenze\n• Kein Ausnutzen von Bugs oder Glitches"],
-    ["⚖️ Fairness geht vor", "Mit der Anmeldung akzeptiert jeder Spieler dieses Regelwerk. Verstöße werden je nach Schwere mit Verwarnung, Sperre oder Ausschluss geahndet.\n\n**CW Bluedragons – Respekt. Fairness. Wettbewerb.** 🐉"],
+    ["💠 Social Media & Twitch", "💪 Wir für euch – ihr für uns!\n⚡ Community Power\n📢 Follows werden kontrolliert\n🤝 Support ist kein Mord – sondern Zusammenhalt der Community"],
+    ["👤 ⚜️ Robii92 | Server Admin ⚜️", "🟣 Twitch (Pflicht): **Robii92**\n📸 Instagram (Pflicht): **community.world.turniere**\n🎵 TikTok: **robi92_ttv**"],
+    ["👤 Server Admin | BSG", "🟣 Twitch (Pflicht): **BlackSeaGamer**\n🎵 TikTok (Pflicht): **BlackSeaGamer**\n📸 Instagram: **BlackSeaGamer**\n▶️ YouTube: **BlackSeaGamer**"],
+    ["💬 Discord", "• Regeln sorgfältig lesen\n• Organisation & Ergebnisse nur im Discord\n• Turnierlinks & Updates unter **CUP Infos**"],
+    ["🧾 Teilnahmebedingungen", "🎮 Nur Casual-Spieler\n🎮 Eigenes PSN & Team erforderlich\n🏆 Ultimate Modus (PS5/Xbox – NEW GEN)\n\n❌ **Nicht erlaubt:** Esportler · Esport-Academy-Spieler · Esport-Player-Foundation · angehende Esportler · Leihspieler · PC-Spieler\n\n🎥 **Streamingpflicht ab Halbfinale:** Mindestens 1 Spieler streamt oder teilt via PSN Party\n⚠️ Verstöße = Teilnahme und Preisgeld können nachträglich gestrichen werden"],
+    ["⏳ Einladezeit & Matchstart", "• Jede Runde startet nur auf Anweisung im Stream\n• **5 Minuten** Einladezeit nach Matchbekanntgabe\n• **Bei Disconnect:** Restliche Spielzeit wird nachgespielt, Ergebnisse werden addiert. Uneinigkeit → Mod-Team/Veranstalter kontaktieren\n• Technische Probleme/inaktive Gegner → Mod kontaktieren\n• Frist nicht eingehalten → **Default Win 3:0**"],
+    ["🎮 Gameplay-Regeln", "• Rainbow-Flick-Bug-Tore ❌\n• Rainbow-Flick-Bug-Kopfball ❌\n• Bei **Rage Quit** kommen **3 Tore** hinzu ⚠️\n\n⚠️ **Verstöße = sofortige Disqualifikation**"],
+    ["📊 Ergebnisse", "• Nach jedem Spiel im **Ergebnis-Kanal** deiner Gruppe auf **Ergebnis eintragen** klicken\n• Der Gegner hat **2 Minuten** zum Bestätigen – sonst gilt das Ergebnis automatisch ✅\n• Unterschiedliche Ergebnisse → die Turnierleitung wird markiert und entscheidet\n• Screenshot vom Endstand im Ergebnis-Kanal posten (empfohlen)\n• Tabelle, Spielplan und Bracket aktualisieren sich automatisch"],
+    ["🏅 Preise & Belohnungen", "• Preise werden individuell pro Turnier festgelegt\n• Infos unter **CUP Infos**"],
+    ["🔞 Teilnahmealter & Zustimmung", "• Mindestalter: **16 Jahre**\n• Teilnahme = Zustimmung zu rechtlichen Voraussetzungen für Preisgeld\n• Veranstalter kann Altersnachweis anfordern"],
+    ["⚖️ Rechtliches & Haftung", "• Das Community World Team steht in keinem direkten oder indirekten Zusammenhang mit Twitch, Instagram oder TikTok.\n• Preisgeld wird ausschließlich vom Community World Team ausgezahlt.\n• Regeln können jederzeit angepasst werden, um einen fairen Ablauf zu gewährleisten.\n• Jeder Spieler ist selbst dafür verantwortlich, die rechtlichen Voraussetzungen für Teilnahme und Preisgeld zu erfüllen.\n• Keine Haftung für technische Probleme, Internetverbindungen, Spielfehler oder externe Störungen.\n• Das Team kann bei Regelverstößen disqualifizieren, Ergebnisse ändern oder Matches wiederholen.\n• Entscheidungen des Mod-Teams oder Veranstalters sind verbindlich."],
+    ["✅ Zusammenfassung", "1️⃣ Twitch-Kanäle & TikTok folgen\n2️⃣ Im Stream oder Discord anmelden\n3️⃣ Fair spielen & Ergebnis posten\n4️⃣ Sieg sichern 🥇🏆🎯\n\n**Fairness & Respekt = oberste Priorität** 💛\n💛 LG Community World Team 🫶"],
   ],
 };
 
