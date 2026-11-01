@@ -103,12 +103,18 @@ exports.handler = async () => {
   });
 
   commands.push({
+    name: 'transfers',
+    description: 'Postet das Transfer-Panel (Neuzugang / Abgang mit Grafik) – nur Admins',
+  });
+
+  commands.push({
     name: 'panel',
-    description: 'Postet ein Bedien-Panel in diesen Kanal (Session, Aufstellung, Event) – nur Admins',
+    description: 'Postet ein Bedien-Panel in diesen Kanal (Session, Aufstellung, Event, Transfers) – nur Admins',
     options: [{ name: 'typ', description: 'Welches Panel?', type: 3, required: true, choices: [
       { name: 'Session (Spielberichte starten/beenden)', value: 'session' },
       { name: 'Aufstellung', value: 'aufstellung' },
       { name: 'Event & anonyme Umfrage', value: 'event' },
+      { name: 'Transfers', value: 'transfers' },
     ] }],
   });
 

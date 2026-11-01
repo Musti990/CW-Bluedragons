@@ -85,7 +85,7 @@ async function runGreetings(guildId) {
   const channels = chRes.ok ? await chRes.json() : [];
   const ch = {
     welcome: pick(channels, process.env.WELCOME_CHANNEL_ID, ['willkommen', 'welcome']),
-    bye: pick(channels, process.env.GOODBYE_CHANNEL_ID, ['goodbye', 'byebye', 'aufwiedersehen', 'tschuess', 'abschied']),
+    bye: pick(channels, process.env.GOODBYE_CHANNEL_ID, ['byeallesgute', 'goodbye', 'byebye', 'aufwiedersehen', 'tschuess', 'abschied', 'allesgute']),
     rules: pick(channels, process.env.RULES_CHANNEL_ID, ['regeln', 'rules']),
     roles: pick(channels, process.env.ROLES_CHANNEL_ID, ['rollenauswahl', 'rollen']),
   };

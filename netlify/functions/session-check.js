@@ -125,6 +125,14 @@ exports.handler = async () => {
     results.push({ aufstellung: 'Fehler: ' + err.message });
   }
 
+  // Transfers: liegengebliebene Aufträge nachholen
+  try {
+    const tr = await require('./lib/transfers').processPendingTransfers();
+    if (tr.length) results.push({ transfers: tr });
+  } catch (err) {
+    results.push({ transfers: 'Fehler: ' + err.message });
+  }
+
   // Spieler-Umfragen nach Ablauf schließen
   try {
     const n = await require('./lib/polls').processPolls();

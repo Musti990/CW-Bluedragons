@@ -1262,14 +1262,30 @@ function eventPanel() {
     embeds: [{
       color: 0x1f6bff,
       title: '📅 EVENT & UMFRAGE',
-      description: '**📅 Event erstellen** – Session mit Zusage/Absage und Namensliste.\n**🕵️ Anonyme Umfrage** – gleiche Buttons, aber es werden nur Zahlen angezeigt, keine Namen.\n\nTitel, Datum, Uhrzeit & Co. eintragen, Mannschaft wählen – fertig.',
+      description: '**📅 Event erstellen** – Session mit Zusage/Absage und Namensliste.\n**🕵️ Anonyme Umfrage** – gleiche Buttons, aber es werden nur Zahlen angezeigt, keine Namen.\n\nTitel, Datum, Uhrzeit & Co. eintragen, Mannschaft und Kanal wählen – fertig.',
       thumbnail: { url: `${process.env.URL}/blue-dragons-logo.png` },
-      footer: { text: 'Nur Admins · Das Event erscheint in diesem Kanal' },
+      footer: { text: 'Nur Admins · Kanal wählst du beim Erstellen' },
     }],
     components: [{ type: 1, components: [
       { type: 2, style: 3, label: 'Event erstellen', emoji: { name: '📅' }, custom_id: 'bdp:ev_new:0' },
       { type: 2, style: 1, label: 'Anonyme Umfrage', emoji: { name: '🕵️' }, custom_id: 'bdp:ev_new:1' },
       { type: 2, style: 2, label: 'Wer hat nicht gefallen?', emoji: { name: '👎' }, custom_id: 'bdp:pu_start' },
+    ] }],
+  };
+}
+
+function transferPanel() {
+  return {
+    embeds: [{
+      color: 0x1f6bff,
+      title: '🔁 TRANSFERS',
+      description: '**✅ Neuzugang** → postet in **✅-Transfers**\n**❌ Abgang** → postet in **❌-Abgänge**\n…und jeweils auch in **📢-ProClubs-News**.\n\nSpieler auswählen, Position & Verein eintragen – fertig ist die Grafik mit Logo und Namen.',
+      thumbnail: { url: `${process.env.URL}/blue-dragons-logo.png` },
+      footer: { text: 'Nur Admins' },
+    }],
+    components: [{ type: 1, components: [
+      { type: 2, style: 3, label: 'Neuzugang', emoji: { name: '✅' }, custom_id: 'bdp:tr:in' },
+      { type: 2, style: 4, label: 'Abgang', emoji: { name: '❌' }, custom_id: 'bdp:tr:out' },
     ] }],
   };
 }
@@ -1290,7 +1306,7 @@ function lineupPanel() {
 async function handlePanelCommand(interaction) {
   if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können Panels posten.');
   const typ = (interaction.data.options || []).find((o) => o.name === 'typ')?.value;
-  const panel = typ === 'aufstellung' ? lineupPanel() : typ === 'event' ? eventPanel() : sessionPanel();
+  const panel = typ === 'aufstellung' ? lineupPanel() : typ === 'event' ? eventPanel() : typ === 'transfers' ? transferPanel() : sessionPanel();
   return json(200, { type: 4, data: panel });
 }
 
@@ -1325,6 +1341,40 @@ async function handlePanelAction(interaction) {
     if (!list.length) return ephemeral('Gerade läuft keine Session.');
     return ephemeral(`📊 **Laufende Sessions**\n${list.map((x) => `• **${x.label}** (ID ${x.clubId}) · ${x.matches.length} ${x.matches.length === 1 ? 'Spiel' : 'Spiele'}${x.endRequestedAt ? ' · wird beendet' : ''}`).join('\n')}`);
   }
+  // ---------- Transfers ----------
+  if (id === 'bdp:tr:in' || id === 'bdp:tr:out') {
+    const kind = id.endsWith(':in') ? 'in' : 'out';
+    return ephemeral(`**${kind === 'in' ? '✅ Neuzugang' : '❌ Abgang'}** – welcher Spieler? (ist er nicht auf dem Server, wähl „Ohne Discord-Mitglied“)`, {
+      components: [
+        { type: 1, components: [{ type: 5, custom_id: `bdp:tr_user:${kind}`, placeholder: 'Spieler auswählen…', min_values: 1, max_values: 1 }] },
+        { type: 1, components: [{ type: 2, style: 2, label: 'Ohne Discord-Mitglied', emoji: { name: '✍️' }, custom_id: `bdp:tr_user:${kind}:none` }] },
+      ],
+    });
+  }
+  if (id.startsWith('bdp:tr_user:')) {
+    const [, , kind, none] = id.split(':');
+    const uid = none ? '' : interaction.data.values?.[0] || '';
+    const r = interaction.data.resolved || {};
+    const nameGuess = uid ? String(r.members?.[uid]?.nick || r.users?.[uid]?.global_name || r.users?.[uid]?.username || '').split('|')[0].trim() : '';
+    const f = (cid, label, req, value, ph, style = 1, max = 40) => ({ type: 1, components: [{ type: 4, custom_id: cid, label, style, required: req, max_length: max, value: value || undefined, placeholder: ph }] });
+    return json(200, { type: 9, data: { custom_id: `bdp:tr_modal:${kind}:${uid || '-'}`, title: `${kind === 'in' ? 'Neuzugang' : 'Abgang'}${nameGuess ? ' · ' + nameGuess : ''}`.slice(0, 45), components: [
+      f('name', 'Name auf der Grafik', true, nameGuess, 'z. B. Leon', 1, 24),
+      f('position', 'Position (optional)', false, '', 'z. B. ZDM', 1, 12),
+      f('nummer', 'Rückennummer (optional)', false, '', 'z. B. 6', 1, 2),
+      f('verein', kind === 'in' ? 'Kommt von (optional)' : 'Wechselt zu (optional)', false, '', 'z. B. Calcio Strada', 1, 40),
+      f('info', 'Info (optional)', false, '', kind === 'in' ? 'z. B. Willkommen zurück!' : 'z. B. Danke für 2 starke Saisons', 2, 300),
+    ] } });
+  }
+  if (id.startsWith('bdp:tr_modal:')) {
+    const [, , kind, uid] = id.split(':');
+    const name = modalValue(interaction, 'name');
+    if (!name) return ephemeral('❌ Bitte einen Namen eintragen.');
+    const nummer = modalValue(interaction, 'nummer');
+    if (nummer && !/^\d{1,2}$/.test(nummer)) return ephemeral('❌ Die Rückennummer muss eine Zahl von 1 bis 99 sein.');
+    await require('./lib/transfers').requestTransfer({ kind, guildId: interaction.guild_id, userId: uid !== '-' ? uid : null, name, position: modalValue(interaction, 'position').toUpperCase(), number: nummer || null, club: modalValue(interaction, 'verein'), info: modalValue(interaction, 'info') });
+    return ephemeral(`✅ ${kind === 'in' ? 'Neuzugang' : 'Abgang'} **${name}** wird gepostet – in ${kind === 'in' ? '✅-Transfers' : '❌-Abgänge'} und 📢-ProClubs-News. Die Grafik erscheint in ein paar Sekunden.`);
+  }
+
   // ---------- Spieler-Umfrage nach der Session ----------
   if (id === 'bdp:pu_start') {
     return ephemeral('**🕵️ Spieler-Umfrage** – welche Aufstellung soll ich als Liste nehmen? (Namen kannst du danach noch ändern)', {
@@ -1388,10 +1438,23 @@ async function handlePanelAction(interaction) {
     });
   }
   if (id === 'bdp:ev_team') {
+    // Schritt: Mannschaft merken → Kanal wählen
     const st = evStore();
     const draft = await st.get(`draft-${interaction.member.user.id}`, { type: 'json' });
     if (!draft) return json(200, { type: 7, data: { content: 'Der Entwurf ist abgelaufen – bitte neu starten.', components: [] } });
-    const team = interaction.data.values?.[0];
+    draft.team = interaction.data.values?.[0];
+    await st.setJSON(`draft-${interaction.member.user.id}`, draft);
+    return json(200, { type: 7, data: {
+      content: `**${draft.anonym ? '🕵️ Anonyme Umfrage' : '📅 Event'}: ${draft.titel}**\nIn welchen Kanal soll ${draft.anonym ? 'die Umfrage' : 'das Event'}?`,
+      components: [{ type: 1, components: [{ type: 8, custom_id: 'bdp:ev_ch', placeholder: 'Kanal auswählen…', channel_types: [0, 5], min_values: 1, max_values: 1, default_values: [{ id: draft.channelId, type: 'channel' }] }] }],
+    } });
+  }
+  if (id === 'bdp:ev_ch') {
+    const st = evStore();
+    const draft = await st.get(`draft-${interaction.member.user.id}`, { type: 'json' });
+    if (!draft) return json(200, { type: 7, data: { content: 'Der Entwurf ist abgelaufen – bitte neu starten.', components: [] } });
+    draft.channelId = interaction.data.values?.[0] || draft.channelId;
+    const team = draft.team;
     const options = [
       { name: 'titel', value: draft.titel }, { name: 'datum', value: draft.datum }, { name: 'uhrzeit', value: draft.uhrzeit },
       { name: 'limit', value: draft.limit }, { name: 'anonym', value: draft.anonym },
@@ -1403,7 +1466,7 @@ async function handlePanelAction(interaction) {
     const res = await handleCreateEvent(fake, st, { postToChannel: true });
     await st.delete(`draft-${interaction.member.user.id}`);
     const body = JSON.parse(res.body);
-    return json(200, { type: 7, data: { content: body.data?.content || '✅ Gepostet!', components: [] } });
+    return json(200, { type: 7, data: { content: (body.data?.content || '✅ Gepostet!') + (body.data?.content?.startsWith('✅') ? ` → <#${draft.channelId}>` : ''), components: [] } });
   }
 
   if (id.startsWith('bdp:lu:')) {
@@ -1502,6 +1565,11 @@ exports.handler = async (event) => {
     const { already, roleOk } = await require('./lib/server-rules').accept(interaction.member?.user?.id, interaction.guild_id);
     if (!roleOk) return ephemeral('✅ Regeln akzeptiert – ⚠️ die Rolle „Verifiziert“ konnte aber nicht vergeben werden. Bitte melde dich bei einem Admin.');
     return ephemeral(already ? '✅ Du hast die Regeln bereits akzeptiert.' : '✅ **Danke!** Du hast die Server-Regeln akzeptiert – die **Rollenauswahl** ist jetzt für dich freigeschaltet.');
+  }
+
+  if (interaction.type === 2 && interaction.data?.name === 'transfers') {
+    if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können das Transfer-Panel posten.');
+    return json(200, { type: 4, data: transferPanel() });
   }
 
   if (interaction.type === 2 && interaction.data?.name === 'panel') {
