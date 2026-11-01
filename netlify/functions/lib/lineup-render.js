@@ -83,8 +83,17 @@ async function publishLineup({ key, channelId, kickoff, note }) {
   const imageName = `aufstellung-team${lineup.team}.png`;
   const svg = buildLineupSvg({ teamName: KADER_TEAMS[lineup.team].label, title: lineup.title, formation: lineup.formation, players: lineup.players });
   const png = await sharp(Buffer.from(svg)).png().toBuffer();
-  let role;
-  try { role = findKaderRole(await getGuildRoles(lineup.guildId), lineup.team); } catch { role = null; }
+  // Wen markieren? Team 1: Rolle „Blue Dragons“ · Late Night: Rolle „Late Night …“ (sonst auch „Blue Dragons“)
+  // Fest einstellbar per Netlify-Variable LINEUP_PING_ROLE_ID (Team 1) bzw. LINEUP_PING_ROLE_ID_2 (Late Night)
+  let role = null;
+  try {
+    const roles = await getGuildRoles(lineup.guildId);
+    const norm = (n) => String(n || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const byId = (id) => (id ? roles.find((r) => r.id === id) : null);
+    const blue = roles.find((r) => !r.managed && norm(r.name) === 'bluedragons') || roles.find((r) => !r.managed && norm(r.name).includes('bluedragons'));
+    if (String(lineup.team) === '2') role = byId(process.env.LINEUP_PING_ROLE_ID_2) || roles.find((r) => !r.managed && norm(r.name).includes('latenight')) || blue;
+    else role = byId(process.env.LINEUP_PING_ROLE_ID) || blue;
+  } catch { role = null; }
   const lines = [];
   if (kickoff) lines.push(`⏰ **Anstoß:** <t:${kickoff}:F> · <t:${kickoff}:R>`);
   if (note) lines.push(`📝 ${note}`);

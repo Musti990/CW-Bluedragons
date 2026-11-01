@@ -6,7 +6,7 @@ const { blobStore } = require('./clubs');
 
 const KADER_TEAMS = {
   '1': { label: 'Blue Dragons 1', roleName: '1 Mannschaft', color: 0x2f7bff },
-  '2': { label: 'Blue Dragons 2', roleName: '2 Mannschaft', color: 0xe6b422 },
+  '2': { label: 'Late Night', roleName: '2 Mannschaft', color: 0xe6b422 },
 };
 
 // Wer den Kader bearbeiten darf: Discord-Rechte "Administrator", "Server verwalten" oder "Rollen verwalten"

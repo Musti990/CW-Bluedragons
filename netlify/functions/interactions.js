@@ -461,6 +461,8 @@ const GENERAL_ROLES = [
   { name: 'Aushilfe', label: 'Aushilfe', tag: 'Aushilfe', emoji: '🤝', style: 3, row: 0 },
   { name: 'Tester', label: 'Tester', tag: 'Tester', emoji: '🧪', style: 1, row: 0 },
   { name: 'Late Night Spieler', label: 'Late Night', tag: null, emoji: '🌙', style: 2, row: 0 },
+  { name: 'ProClubs Member', label: 'ProClubs Member', tag: null, emoji: '🎮', style: 1, row: 1 },
+  { name: 'CWT Member', label: 'CWT Member', tag: null, emoji: '🏆', style: 1, row: 1 },
 ];
 const ROLE_TAGS = GENERAL_ROLES.map((r) => r.tag).filter(Boolean);
 
@@ -534,6 +536,10 @@ async function handleRoleCommand() {
 
 async function handleRoleButton(interaction) {
   const roleName = interaction.data.custom_id.split(':')[1];
+  const gate = await require('./lib/server-rules').mayChooseRoles(interaction.member);
+  if (!gate.ok) {
+    return json(200, { type: 4, data: { content: `📜 Bitte akzeptiere zuerst die **Server-Regeln**${gate.channelId ? ` in <#${gate.channelId}>` : ''} – danach kannst du dir hier deine Rollen holen.`, flags: 64 } });
+  }
   const guildId = interaction.guild_id;
   const userId = interaction.member?.user?.id;
   const authHeader = { Authorization: `Bot ${process.env.DISCORD_TOKEN}` };
@@ -543,7 +549,9 @@ async function handleRoleButton(interaction) {
     return json(200, { type: 4, data: { content: 'Konnte Rollen nicht laden.', flags: 64 } });
   }
   const roles = await rolesRes.json();
-  const role = roles.find((r) => r.name === roleName);
+  // Exakter Name, sonst tolerant (Emojis/Schrift/Leerzeichen egal) – nie die Bot-Rolle
+  const normR = (n) => String(n || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const role = roles.find((r) => r.name === roleName) || roles.find((r) => !r.managed && normR(r.name) === normR(roleName));
 
   if (!role) {
     return json(200, {
@@ -1154,7 +1162,7 @@ async function handleTicketModal(interaction) {
 }
 
 // Was gehört zum Zusagen-Bot? Alles andere (Befehle /ut-…, Cup-Buttons) gehört zum Ultimate Team Cup.
-const BD_PREFIXES = ['bdp:', 'genrole:', 'kader:', 'lineup:', 'posnick:', 'posrole:', 'ticket:', 'ticketform:', 'rsvp:'];
+const BD_PREFIXES = ['srules:', 'bdp:', 'genrole:', 'kader:', 'lineup:', 'posnick:', 'posrole:', 'ticket:', 'ticketform:', 'rsvp:'];
 function isCupInteraction(i) {
   if (i.type === 2 || i.type === 4) return String(i.data?.name || '').startsWith('ut-');
   if (i.type === 3 || i.type === 5) {
@@ -1291,6 +1299,29 @@ exports.handler = async (event) => {
 
   if (interaction.type === 2 && interaction.data?.name === 'rolle') {
     return handleRoleCommand();
+  }
+
+  if (interaction.type === 2 && interaction.data?.name === 'regeln') {
+    if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können die Regeln posten.');
+    const R = require('./lib/server-rules');
+    if ((interaction.data.options || []).find((o) => o.name === 'aktion')?.value === 'status') {
+      const st = await R.getState(), job = await R.backfillStatus();
+      return ephemeral(`📊 **Server-Regeln**\n• Akzeptiert (neue Mitglieder): **${Object.keys(st.accepted || {}).length}**\n• Rolle: ${st.roleId ? `<@&${st.roleId}>` : '–'}\n• Bestehende Mitglieder: ${job ? `**${job.done}/${job.total}** haben „Verifiziert“ bekommen${job.todo?.length ? ' – läuft noch (alle 2 Min. weiter)' : ' ✅ fertig'}` : '–'}`);
+    }
+    const st = await R.markPosted(interaction.channel_id, interaction.guild_id);
+    const info = st.first
+      ? (st.role ? `✅ Rolle <@&${st.role.id}> ist bereit. **${st.queued}** bestehende Mitglieder bekommen sie jetzt automatisch (ca. ${Math.max(1, Math.ceil(st.queued / 50) * 2)} Min.). Stand prüfen: \`/regeln aktion: Status\`\n⚠️ Kanalrechte erst umstellen, wenn der Status „fertig“ zeigt.` : '⚠️ Die Rolle „Verifiziert“ konnte nicht angelegt werden – der Bot braucht „Rollen verwalten“.')
+      : '';
+    // Panel öffentlich in den Kanal posten, Hinweis nur für den Admin
+    const post = await fetch(`https://discord.com/api/v10/channels/${interaction.channel_id}/messages`, { method: 'POST', headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(R.rulesPanel()) });
+    if (!post.ok) return ephemeral('⚠️ Konnte die Regeln hier nicht posten – der Bot braucht in diesem Kanal „Nachrichten senden“ und „Links einbetten“.');
+    return ephemeral(`📜 Regeln gepostet.${info ? '\n' + info : ''}`);
+  }
+
+  if (interaction.type === 3 && interaction.data?.custom_id === 'srules:ok') {
+    const { already, roleOk } = await require('./lib/server-rules').accept(interaction.member?.user?.id, interaction.guild_id);
+    if (!roleOk) return ephemeral('✅ Regeln akzeptiert – ⚠️ die Rolle „Verifiziert“ konnte aber nicht vergeben werden. Bitte melde dich bei einem Admin.');
+    return ephemeral(already ? '✅ Du hast die Regeln bereits akzeptiert.' : '✅ **Danke!** Du hast die Server-Regeln akzeptiert – die **Rollenauswahl** ist jetzt für dich freigeschaltet.');
   }
 
   if (interaction.type === 2 && interaction.data?.name === 'panel') {

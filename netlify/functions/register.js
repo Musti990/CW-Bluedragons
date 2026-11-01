@@ -41,7 +41,7 @@ exports.handler = async () => {
     },
     {
       name: 'rolle',
-      description: 'Postet die Rollenwahl (Aushilfe, Tester, Late Night)',
+      description: 'Postet die Rollenwahl (Aushilfe, Tester, Late Night, ProClubs, CWT)',
     },
     {
       name: 'kader',
@@ -54,7 +54,7 @@ exports.handler = async () => {
           required: true,
           choices: [
             { name: 'Blue Dragons 1', value: '1' },
-            { name: 'Blue Dragons 2', value: '2' },
+            { name: 'Late Night', value: '2' },
           ],
         },
       ],
@@ -87,13 +87,19 @@ exports.handler = async () => {
           required: true,
           choices: [
             { name: 'Blue Dragons 1', value: '1' },
-            { name: 'Blue Dragons 2', value: '2' },
+            { name: 'Late Night', value: '2' },
           ],
         },
         { name: 'titel', description: 'Titel (z.B. "Aufstellung Cup")', type: 3, required: false },
       ],
     },
   ];
+
+  commands.push({
+    name: 'regeln',
+    description: 'Postet die Server-Regeln mit „Regeln akzeptieren“-Button – nur Admins',
+    options: [{ name: 'aktion', description: 'Posten (Standard) oder Stand anzeigen', type: 3, required: false, choices: [{ name: 'Posten', value: 'posten' }, { name: 'Status', value: 'status' }] }],
+  });
 
   commands.push({
     name: 'panel',

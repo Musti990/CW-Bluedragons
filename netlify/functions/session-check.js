@@ -117,6 +117,14 @@ exports.handler = async () => {
     results.push({ kader: 'Fehler: ' + err.message });
   }
 
+  // Server-Regeln: bestehenden Mitgliedern einmalig „Verifiziert“ geben (in Schritten)
+  try {
+    const bf = await require('./lib/server-rules').processBackfill(15000);
+    if (bf) results.push({ verifiziert: bf });
+  } catch (err) {
+    results.push({ verifiziert: 'Fehler: ' + err.message });
+  }
+
   // Events 1,5 h nach dem Treffpunkt schließen (Nachricht löschen) + alte wegräumen
   try {
     const events = await processEventMaintenance(process.env.GUILD_ID);
