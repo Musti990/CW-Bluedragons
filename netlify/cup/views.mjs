@@ -145,7 +145,7 @@ export function adminPanel(t, cupMode = "auto") {
     embeds: [{
       color: COLOR,
       title: "🛠️ ADMIN-PANEL · ULTIMATE TEAM CUP",
-      description: `Alle wichtigen Aktionen per Klick – nur für **Turnierleitung** und Server-Admins.\nAntworten sieht nur, wer klickt.\n\n**Aktueller Cup:** ${t ? `${esc(t.name)} · ${st} · ${t.reg?.length ?? 0} angemeldet` : st}\n**Modus:** ${MODE_NAME[(t?.mode) || cupMode] || MODE_NAME.auto}${t?.league ? " · läuft als Liga" : t?.groups?.length ? " · läuft mit Gruppen" : ""}`,
+      description: `Alle wichtigen Aktionen per Klick – nur für **Admins** (Rolle mit „Admin“ oder „Owner“ im Namen).\nAntworten sieht nur, wer klickt.\n\n**Aktueller Cup:** ${t ? `${esc(t.name)} · ${st} · ${t.reg?.length ?? 0} angemeldet` : st}\n**Modus:** ${MODE_NAME[(t?.mode) || cupMode] || MODE_NAME.auto}${t?.league ? " · läuft als Liga" : t?.groups?.length ? " · läuft mit Gruppen" : ""}`,
       fields: [
         { name: "⚽ Turnier", value: "Anmeldeschluss · Check-in beenden · offene Spiele · Ergebnis festlegen · Ergebnis bearbeiten", inline: false },
         { name: "👤 Spieler", value: "Spieler abmelden · Profil löschen · Freilos hinzufügen/entfernen", inline: false },

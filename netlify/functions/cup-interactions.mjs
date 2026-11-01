@@ -46,8 +46,20 @@ const later = (context, fn) => { const p = Promise.resolve().then(fn).catch((e) 
 const asAdminCmd = (i, sub, options = [], channelId) => ({ ...i, channel_id: channelId || i.channel_id, type: 2, data: { name: "ut-admin", options: [{ type: 1, name: sub, options }] } });
 const asSetupCmd = (i, sub) => ({ ...i, type: 2, data: { name: "ut-einrichten", options: [{ type: 1, name: sub, options: [] }] } });
 
+/** Admin-Panel nur für echte Admins: Rolle mit „Admin“/„Owner“ im Namen (oder ADMIN_ROLE_ID) – nicht für VMs/Turnierleitung */
+async function isPanelAdmin(i) {
+  const mine = i.member?.roles || [];
+  if (process.env.ADMIN_ROLE_ID && mine.includes(process.env.ADMIN_ROLE_ID)) return true;
+  if (!mine.length) return false;
+  const norm = (n) => String(n || "").normalize("NFKC").toLowerCase().replace(/[^a-z0-9]/g, "");
+  try {
+    const roles = await discord(`/guilds/${i.guild_id}/roles`);
+    return (roles || []).some((r) => mine.includes(r.id) && !r.managed && !norm(r.name).includes("vm") && (norm(r.name).includes("admin") || norm(r.name).includes("owner")));
+  } catch { return false; }
+}
+
 async function adminPanelAction(i, context, cfg, act) {
-  if (!isAdmin(i, cfg)) return eph("⛔ Das Admin-Panel darf nur die Turnierleitung benutzen.");
+  if (!(await isPanelAdmin(i))) return eph("⛔ Das Admin-Panel dürfen nur **Admins** benutzen.");
   const t = await F.currentCup();
   later(context, () => F.refreshAdminPanel());
   const needSignup = () => { if (!t || t.status !== "anmeldung") throw new Error("Gerade ist keine Anmeldung offen."); return t.channelId; };
@@ -585,7 +597,7 @@ async function modal(i, context) {
   const id = i.data.custom_id, uid = uidOf(i), v = modalValues(i);
 
   if (id.startsWith("adm_m:")) {
-    if (!isAdmin(i, cfg)) return eph("Das darf nur die Turnierleitung.");
+    if (!(await isPanelAdmin(i))) return eph("⛔ Das Admin-Panel dürfen nur **Admins** benutzen.");
     const kind = id.slice(6);
     const t = await F.currentCup();
     later(context, () => F.refreshAdminPanel());
