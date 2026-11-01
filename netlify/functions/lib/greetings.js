@@ -23,12 +23,12 @@ function welcomeMessage(uid, count, ch) {
     allowed_mentions: { users: [uid] },
     embeds: [{
       color: 0x1f6bff,
-      author: { name: 'CW BlueDragons', icon_url: `${process.env.URL}/blue-dragons-logo.png` },
-      title: '🐉 WILLKOMMEN BEI CW BLUEDRAGONS! 🔱',
-      description: `Hey <@${uid}>, schön, dass du da bist! 💙\nDu bist unser **${count}. Mitglied** – willkommen in der Familie der Drachen.\n\n**So geht's los:**\n${steps.join('\n')}\n\n⚽ Pro Clubs · 🃏 Ultimate Team · 🏆 Turniere · 🌙 Late Night Sessions`,
+      author: { name: 'CW Community World', icon_url: `${process.env.URL}/blue-dragons-logo.png` },
+      title: '🌍 WILLKOMMEN BEI CW COMMUNITY WORLD! 🔱',
+      description: `Hey <@${uid}>, schön, dass du da bist! 💙\nDu bist unser **${count}. Mitglied** – willkommen in der **CW Community World**.\n\n**So geht's los:**\n${steps.join('\n')}\n\n⚽ Pro Clubs · 🃏 Ultimate Team · 🏆 Turniere · 🌙 Late Night Sessions`,
       thumbnail: { url: `${process.env.URL}/blue-dragons-logo.png` },
       image: { url: `${process.env.URL}/blue-dragons-banner.png` },
-      footer: { text: 'CW BlueDragons · Respekt. Zusammenhalt. Leidenschaft. 🐉' },
+      footer: { text: 'CW Community World · Respekt. Zusammenhalt. Leidenschaft. 🔱' },
       timestamp: new Date().toISOString(),
     }],
   };
@@ -38,8 +38,8 @@ function goodbyeMessage(m, count) {
   return {
     embeds: [{
       color: 0x4e5058,
-      author: { name: 'CW BlueDragons', icon_url: `${process.env.URL}/blue-dragons-logo.png` },
-      description: `👋 **${m.name}** hat CW BlueDragons verlassen.\nMach's gut – die Tür bleibt offen! 🐉\n\n-# Wir sind jetzt **${count}** Mitglieder.`,
+      author: { name: 'CW Community World', icon_url: `${process.env.URL}/blue-dragons-logo.png` },
+      description: `👋 **${m.name}** hat CW Community World verlassen.\nMach's gut – die Tür bleibt offen! 🐉\n\n-# Wir sind jetzt **${count}** Mitglieder.`,
       thumbnail: m.avatar ? { url: m.avatar } : undefined,
       timestamp: new Date().toISOString(),
     }],
@@ -62,6 +62,26 @@ async function listMembers(guildId) {
     after = list[list.length - 1].user.id;
   }
   return out;
+}
+
+// Rollen, die jeder beim Beitritt automatisch bekommt (Namen tolerant: Emojis/Schrift egal)
+// Fest einstellbar per Netlify-Variable AUTO_ROLE_IDS (IDs mit Komma getrennt)
+const AUTO_ROLE_NAMES = ['Pro Clubs Member', 'FUT Member', 'CW Member'];
+
+async function giveAutoRoles(guildId, userId, roles) {
+  const ids = (process.env.AUTO_ROLE_IDS || '').split(',').map((x) => x.trim()).filter(Boolean);
+  const wanted = ids.length ? roles.filter((r) => ids.includes(r.id)) : AUTO_ROLE_NAMES.map((n) => roles.find((r) => !r.managed && norm(r.name) === norm(n))).filter(Boolean);
+  const given = [];
+  for (const r of wanted) {
+    const res = await fetch(`${API}/guilds/${guildId}/members/${userId}/roles/${r.id}`, { method: 'PUT', headers: { ...auth(), 'X-Audit-Log-Reason': encodeURIComponent('Automatisch beim Beitritt') } });
+    if (res.ok) given.push(r.name);
+  }
+  return given;
+}
+
+async function guildRoles(guildId) {
+  const res = await fetch(`${API}/guilds/${guildId}/roles`, { headers: auth() });
+  return res.ok ? res.json() : [];
 }
 
 async function post(channelId, body) {
@@ -90,11 +110,47 @@ async function runGreetings(guildId) {
     roles: pick(channels, process.env.ROLES_CHANNEL_ID, ['rollenauswahl', 'rollen']),
   };
   const count = Object.keys(now).length;
-  let w = 0, b = 0;
+  let w = 0, b = 0, roleCount = 0;
+  if (joined.length) {
+    const roles = await guildRoles(guildId);
+    for (const id of joined) roleCount += (await giveAutoRoles(guildId, id, roles)).length;
+  }
   if (ch.welcome) for (const id of joined) if (await post(ch.welcome.id, welcomeMessage(id, count, ch))) w++;
   const byeCh = ch.bye || ch.welcome;
   if (byeCh) for (const id of left) if (await post(byeCh.id, goodbyeMessage(st.members[id], count))) b++;
-  return { welcome: w, goodbye: b, channels: { welcome: ch.welcome?.name || null, goodbye: byeCh?.name || null } };
+  return { welcome: w, goodbye: b, autoRoles: roleCount, channels: { welcome: ch.welcome?.name || null, goodbye: byeCh?.name || null } };
 }
 
-module.exports = { runGreetings, welcomeMessage, goodbyeMessage };
+/** /test: Willkommen / Good Bye / Beitritt für sich selbst ausprobieren */
+async function testGreeting(guildId, member, typ) {
+  const chRes = await fetch(`${API}/guilds/${guildId}/channels`, { headers: auth() });
+  const channels = chRes.ok ? await chRes.json() : [];
+  const ch = {
+    welcome: pick(channels, process.env.WELCOME_CHANNEL_ID, ['willkommen', 'welcome']),
+    bye: pick(channels, process.env.GOODBYE_CHANNEL_ID, ['byeallesgute', 'goodbye', 'byebye', 'aufwiedersehen', 'tschuess', 'abschied', 'allesgute']),
+    rules: pick(channels, process.env.RULES_CHANNEL_ID, ['regeln', 'rules']),
+    roles: pick(channels, process.env.ROLES_CHANNEL_ID, ['rollenauswahl', 'rollen']),
+  };
+  const uid = member.user.id;
+  const count = (await listMembers(guildId).catch(() => ({ x: 1 }))) ;
+  const n = Object.keys(count).length;
+  const out = [];
+  if (typ === 'willkommen' || typ === 'beitritt') {
+    if (!ch.welcome) out.push('⚠️ Kein Willkommens-Kanal gefunden (Name mit „Willkommen“).');
+    else { const m = welcomeMessage(uid, n, ch); m.embeds[0].footer.text += ' · 🧪 TEST'; out.push((await post(ch.welcome.id, m)) ? `✅ Willkommensnachricht in <#${ch.welcome.id}>` : '⚠️ Konnte nicht in den Willkommens-Kanal posten.'); }
+  }
+  if (typ === 'beitritt') {
+    const given = await giveAutoRoles(guildId, uid, await guildRoles(guildId));
+    out.push(given.length ? `✅ Automatische Rollen: **${given.join(', ')}**` : `⚠️ Keine Auto-Rollen vergeben – gibt es „${AUTO_ROLE_NAMES.join('“, „')}“ auf dem Server und steht der Bot darüber?`);
+  }
+  if (typ === 'goodbye') {
+    const byeCh = ch.bye || ch.welcome;
+    const name = member.nick || member.user.global_name || member.user.username;
+    const avatar = member.user.avatar ? `https://cdn.discordapp.com/avatars/${uid}/${member.user.avatar}.png?size=128` : null;
+    const m = goodbyeMessage({ name: `${name} (🧪 TEST)`, avatar }, n);
+    out.push(byeCh && (await post(byeCh.id, m)) ? `✅ Good-Bye-Nachricht in <#${byeCh.id}>` : '⚠️ Kein Good-Bye-Kanal gefunden.');
+  }
+  return out.join('\n');
+}
+
+module.exports = { runGreetings, welcomeMessage, goodbyeMessage, testGreeting, giveAutoRoles, AUTO_ROLE_NAMES };

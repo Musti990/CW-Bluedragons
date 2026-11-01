@@ -103,6 +103,16 @@ exports.handler = async () => {
   });
 
   commands.push({
+    name: 'test',
+    description: 'Willkommen, Good Bye oder Beitritt (inkl. Auto-Rollen) an dir selbst testen – nur Admins',
+    options: [{ name: 'typ', description: 'Was testen?', type: 3, required: true, choices: [
+      { name: 'Willkommensnachricht', value: 'willkommen' },
+      { name: 'Good-Bye-Nachricht', value: 'goodbye' },
+      { name: 'Beitritt (Willkommen + Auto-Rollen)', value: 'beitritt' },
+    ] }],
+  });
+
+  commands.push({
     name: 'transfers',
     description: 'Postet das Transfer-Panel (Neuzugang / Abgang mit Grafik) – nur Admins',
   });

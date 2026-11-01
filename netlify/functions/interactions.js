@@ -578,7 +578,8 @@ async function handleRoleButton(interaction) {
 
   const hasRole = (interaction.member?.roles || []).includes(role.id);
 
-  // Tester gibt es nicht direkt: es öffnet sich ein Bewerbungs-Ticket (privater Kanal mit Fragen)
+  // Tester gibt es nicht direkt: es öffnet sich ein Bewerbungs-Ticket (privater Kanal mit Infoblatt).
+  // Beim „Annehmen“ im Ticket bekommt man Tester + Dragons Spieler und den Namen „Name | Tester“.
   if (roleName === 'Tester' && !hasRole) {
     const t = await openTesterTicket(interaction, roles);
     if (t.error) return json(200, { type: 4, data: { content: `⚠️ ${t.error}`, flags: 64 } });
@@ -587,7 +588,7 @@ async function handleRoleButton(interaction) {
       data: {
         content: t.existing
           ? `🎫 Du hast schon ein offenes Ticket: <#${t.channelId}>`
-          : `🎫 Dein Tester-Ticket ist offen: <#${t.channelId}>\nBeantworte dort die Fragen – ein Admin meldet sich.`,
+          : `🎫 Dein Tester-Ticket ist offen: <#${t.channelId}>\nFüll dort das Infoblatt aus – ein Admin meldet sich.`,
         flags: 64,
       },
     });
@@ -1565,6 +1566,13 @@ exports.handler = async (event) => {
     const { already, roleOk } = await require('./lib/server-rules').accept(interaction.member?.user?.id, interaction.guild_id);
     if (!roleOk) return ephemeral('✅ Regeln akzeptiert – ⚠️ die Rolle „Verifiziert“ konnte aber nicht vergeben werden. Bitte melde dich bei einem Admin.');
     return ephemeral(already ? '✅ Du hast die Regeln bereits akzeptiert.' : '✅ **Danke!** Du hast die Server-Regeln akzeptiert – die **Rollenauswahl** ist jetzt für dich freigeschaltet.');
+  }
+
+  if (interaction.type === 2 && interaction.data?.name === 'test') {
+    if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können testen.');
+    const typ = (interaction.data.options || []).find((o) => o.name === 'typ')?.value || 'willkommen';
+    const txt = await require('./lib/greetings').testGreeting(interaction.guild_id, interaction.member, typ);
+    return ephemeral(`🧪 **Test: ${typ}**\n${txt}`);
   }
 
   if (interaction.type === 2 && interaction.data?.name === 'transfers') {
