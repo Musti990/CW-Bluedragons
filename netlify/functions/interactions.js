@@ -10,7 +10,7 @@ const {
 const { sessionStore, getSession, saveSession, newSession } = require('./lib/session-core');
 const { INFO_PARTS, openTesterTicket, archiveAndCloseTicket, getInfo, buildInfoModal, saveInfoPart, infoEmbed, postInfoToChannel } = require('./lib/ticket-core');
 const {
-  lineupStore, lineupKey, emptyLineup, getLineup, saveLineup, requestLineupPublish, parseKickoff,
+  lineupStore, lineupKey, emptyLineup, getLineup, saveLineup, requestLineupPublish, requestLineupRepublish, parseKickoff,
   switchFormation, autoFill, lineupEmbed, lineupComponents, requestLineupRefresh, FORMATION_NAMES,
 } = require('./lib/lineup-core');
 const { getGroups, setGroups, POS_GROUP,
@@ -203,7 +203,7 @@ async function handleAufstellungVorschlagCommand(interaction) {
 // -> jetzt alle in ./lib/event-core.js, hier oben importiert
 
 // ---------- Slash-Command /event ----------
-async function handleCreateEvent(interaction, store) {
+async function handleCreateEvent(interaction, store, { postToChannel = false } = {}) {
   const opts = {};
   for (const o of interaction.data.options || []) opts[o.name] = o.value;
 
@@ -236,6 +236,7 @@ async function handleCreateEvent(interaction, store) {
     channelId: interaction.channel_id,
     imageUrl,
     team: opts.mannschaft || null,
+    anonym: !!opts.anonym,
     accepted: [],
     maybe: [],
     declined: [],
@@ -244,6 +245,18 @@ async function handleCreateEvent(interaction, store) {
   };
 
   await store.setJSON(eventId, ev);
+
+  if (postToChannel) {
+    const res = await fetch(`https://discord.com/api/v10/channels/${ev.channelId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds: [await buildEmbed(ev)], components: buildComponents(eventId) }),
+    });
+    if (!res.ok) { await store.delete(eventId); return ephemeral('⚠️ Konnte hier nicht posten – der Bot braucht „Nachrichten senden“ und „Links einbetten“.'); }
+    ev.messageId = (await res.json()).id;
+    await store.setJSON(eventId, ev);
+    return ephemeral(`✅ ${ev.anonym ? 'Anonyme Umfrage' : 'Event'} **${ev.title}** ist gepostet.`);
+  }
 
   // Nachricht-ID nachtragen: die /event-Antwort selbst liefert sie nicht, daher @original abfragen
   (async () => {
@@ -1032,6 +1045,58 @@ async function handleLineupComponent(interaction) {
   return luEph('Unbekannte Aktion.');
 }
 
+// ---------- Veröffentlichte Aufstellung: Spieler ersetzen ----------
+async function handleLineupPub(interaction) {
+  if (!(await isKaderAdmin(interaction))) return luEph('⛔ Nur Admins können Spieler ersetzen.');
+  const parts = interaction.data.custom_id.split(':'); // lineup:<pubrep|pubslot|pubnew|pubmodal>:<pubId>[:slot]
+  const [, act, pubId, slotKey] = parts;
+  const store = lineupStore();
+  const pub = await store.get(`pub-${pubId}`, { type: 'json' });
+  if (!pub) return luEph('Diese Aufstellung ist zu alt – bitte neu posten.');
+  const slots = (require('./lib/matchreport-svg').FORMATIONS[pub.formation] || []);
+  const label = (k) => slots.find((x) => x.key === k)?.label || k;
+
+  if (act === 'pubrep') {
+    return luEph(`**🔄 Spieler ersetzen** · ${pub.title}\nWelche Position?`, {
+      components: [{ type: 1, components: [{ type: 3, custom_id: `lineup:pubslot:${pubId}`, placeholder: 'Position wählen…', options: slots.map((x) => ({ label: `${x.label} · ${pub.players[x.key] || '— frei —'}`.slice(0, 100), value: x.key })) }] }],
+    });
+  }
+  if (act === 'pubslot') {
+    const key = interaction.data.values?.[0];
+    const { players } = await getKaderPlayers(interaction.guild_id, pub.team).catch(() => ({ players: [] }));
+    const used = new Set(Object.values(pub.players).map((n) => String(n).split('|')[0].trim()));
+    const free = players.map((p) => p.name).filter((n) => !used.has(String(n).split('|')[0].trim())).slice(0, 23);
+    return json(200, { type: 7, data: {
+      content: `**🔄 ${label(key)}:** ${pub.players[key] || '— frei —'} → wer kommt rein?`,
+      components: [{ type: 1, components: [{ type: 3, custom_id: `lineup:pubnew:${pubId}:${key}`, placeholder: 'Ersatzspieler wählen…', options: [
+        ...free.map((n) => ({ label: String(n).slice(0, 100), value: `p:${String(n).slice(0, 90)}` })),
+        { label: 'Aushilfe / anderen Namen eintippen', value: 'type', emoji: { name: '✍️' } },
+        { label: 'Position leer lassen', value: 'empty', emoji: { name: '⬜' } },
+      ] }] }],
+    } });
+  }
+  let newName = null;
+  if (act === 'pubnew') {
+    const v = interaction.data.values?.[0];
+    if (v === 'type') {
+      return json(200, { type: 9, data: { custom_id: `lineup:pubmodal:${pubId}:${slotKey}`, title: `Ersatz für ${label(slotKey)}`.slice(0, 45), components: [{ type: 1, components: [{ type: 4, custom_id: 'name', style: 1, label: 'Name', required: true, max_length: 32 }] }] } });
+    }
+    newName = v === 'empty' ? '' : v.slice(2);
+  } else if (act === 'pubmodal') {
+    newName = (interaction.data.components?.[0]?.components?.[0]?.value || '').trim();
+    if (!newName) return luEph('Bitte einen Namen eintragen.');
+  } else return luEph('Unbekannte Aktion.');
+
+  const old = pub.players[slotKey] || '— frei —';
+  if (newName) pub.players[slotKey] = newName; else delete pub.players[slotKey];
+  pub.changes = pub.changes || [];
+  pub.changes.push(`${label(slotKey)}: ~~${String(old).split('|')[0].trim()}~~ → **${newName ? String(newName).split('|')[0].trim() : 'frei'}**`);
+  await store.setJSON(`pub-${pubId}`, pub);
+  await requestLineupRepublish(pubId);
+  const msg = `✅ **${label(slotKey)}:** ${String(old).split('|')[0].trim()} → **${newName || 'frei'}** – die Aufstellung wird gleich aktualisiert.`;
+  return act === 'pubmodal' ? luEph(msg) : json(200, { type: 7, data: { content: msg, components: [] } });
+}
+
 async function handleLineupSendModal(interaction) {
   if (!(await isKaderAdmin(interaction))) return luEph('⛔ Nur Admins können die Aufstellung posten.');
   const [, , , channelId] = interaction.data.custom_id.split(':');
@@ -1162,7 +1227,7 @@ async function handleTicketModal(interaction) {
 }
 
 // Was gehört zum Zusagen-Bot? Alles andere (Befehle /ut-…, Cup-Buttons) gehört zum Ultimate Team Cup.
-const BD_PREFIXES = ['srules:', 'bdp:', 'genrole:', 'kader:', 'lineup:', 'posnick:', 'posrole:', 'ticket:', 'ticketform:', 'rsvp:'];
+const BD_PREFIXES = ['poll:', 'srules:', 'bdp:', 'genrole:', 'kader:', 'lineup:', 'posnick:', 'posrole:', 'ticket:', 'ticketform:', 'rsvp:'];
 function isCupInteraction(i) {
   if (i.type === 2 || i.type === 4) return String(i.data?.name || '').startsWith('ut-');
   if (i.type === 3 || i.type === 5) {
@@ -1186,6 +1251,25 @@ function sessionPanel() {
       { type: 2, style: 3, label: 'Session starten', emoji: { name: '▶️' }, custom_id: 'bdp:sess_start' },
       { type: 2, style: 4, label: 'Session beenden', emoji: { name: '⏹️' }, custom_id: 'bdp:sess_end' },
       { type: 2, style: 2, label: 'Laufende Sessions', emoji: { name: '📊' }, custom_id: 'bdp:sess_list' },
+    ] }, { type: 1, components: [
+      { type: 2, style: 1, label: 'Umfrage: Wer hat nicht gefallen?', emoji: { name: '🕵️' }, custom_id: 'bdp:pu_start' },
+    ] }],
+  };
+}
+
+function eventPanel() {
+  return {
+    embeds: [{
+      color: 0x1f6bff,
+      title: '📅 EVENT & UMFRAGE',
+      description: '**📅 Event erstellen** – Session mit Zusage/Absage und Namensliste.\n**🕵️ Anonyme Umfrage** – gleiche Buttons, aber es werden nur Zahlen angezeigt, keine Namen.\n\nTitel, Datum, Uhrzeit & Co. eintragen, Mannschaft wählen – fertig.',
+      thumbnail: { url: `${process.env.URL}/blue-dragons-logo.png` },
+      footer: { text: 'Nur Admins · Das Event erscheint in diesem Kanal' },
+    }],
+    components: [{ type: 1, components: [
+      { type: 2, style: 3, label: 'Event erstellen', emoji: { name: '📅' }, custom_id: 'bdp:ev_new:0' },
+      { type: 2, style: 1, label: 'Anonyme Umfrage', emoji: { name: '🕵️' }, custom_id: 'bdp:ev_new:1' },
+      { type: 2, style: 2, label: 'Wer hat nicht gefallen?', emoji: { name: '👎' }, custom_id: 'bdp:pu_start' },
     ] }],
   };
 }
@@ -1206,7 +1290,7 @@ function lineupPanel() {
 async function handlePanelCommand(interaction) {
   if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können Panels posten.');
   const typ = (interaction.data.options || []).find((o) => o.name === 'typ')?.value;
-  const panel = typ === 'aufstellung' ? lineupPanel() : sessionPanel();
+  const panel = typ === 'aufstellung' ? lineupPanel() : typ === 'event' ? eventPanel() : sessionPanel();
   return json(200, { type: 4, data: panel });
 }
 
@@ -1241,6 +1325,87 @@ async function handlePanelAction(interaction) {
     if (!list.length) return ephemeral('Gerade läuft keine Session.');
     return ephemeral(`📊 **Laufende Sessions**\n${list.map((x) => `• **${x.label}** (ID ${x.clubId}) · ${x.matches.length} ${x.matches.length === 1 ? 'Spiel' : 'Spiele'}${x.endRequestedAt ? ' · wird beendet' : ''}`).join('\n')}`);
   }
+  // ---------- Spieler-Umfrage nach der Session ----------
+  if (id === 'bdp:pu_start') {
+    return ephemeral('**🕵️ Spieler-Umfrage** – welche Aufstellung soll ich als Liste nehmen? (Namen kannst du danach noch ändern)', {
+      components: [{ type: 1, components: [{ type: 3, custom_id: 'bdp:pu_team', placeholder: 'Aufstellung wählen…', options: [
+        { label: `Letzte Aufstellung · ${KADER_TEAMS['1'].label}`, value: '1', emoji: { name: '🐉' } },
+        { label: `Letzte Aufstellung · ${KADER_TEAMS['2'].label}`, value: '2', emoji: { name: '🌙' } },
+        { label: 'Namen selbst eintragen', value: '-', emoji: { name: '✍️' } },
+      ] }] }],
+    });
+  }
+  if (id === 'bdp:pu_team') {
+    const team = interaction.data.values?.[0];
+    const last = team && team !== '-' ? await require('./lib/polls').lastLineupNames(team) : null;
+    const names = (last?.names || []).join('\n');
+    return json(200, { type: 9, data: { custom_id: 'bdp:pu_modal', title: 'Spieler-Umfrage (anonym)', components: [
+      { type: 1, components: [{ type: 4, custom_id: 'frage', style: 1, label: 'Frage', required: true, max_length: 120, value: 'Wer hat euch heute nicht gefallen?' }] },
+      { type: 1, components: [{ type: 4, custom_id: 'spieler', style: 2, label: 'Spieler (einer pro Zeile, 2–20)', required: true, max_length: 1000, value: names || undefined, placeholder: 'Musti\nLeon\nNoah\n…' }] },
+      { type: 1, components: [{ type: 4, custom_id: 'dauer', style: 1, label: 'Dauer (z. B. 30m, 2h, 1d – leer = 12h)', required: false, max_length: 6, placeholder: '12h' }] },
+    ] } });
+  }
+  if (id === 'bdp:pu_modal') {
+    const P = require('./lib/polls');
+    const options = [...new Set(modalValue(interaction, 'spieler').split('\n').map((x) => x.trim()).filter(Boolean))].slice(0, 20);
+    if (options.length < 2) return ephemeral('❌ Bitte mindestens 2 Spieler eintragen (einer pro Zeile).');
+    try {
+      await P.createPoll({ id: interaction.id, channelId: interaction.channel_id, question: modalValue(interaction, 'frage') || 'Wer hat euch heute nicht gefallen?', options, durationMs: P.parseDuration(modalValue(interaction, 'dauer')), creatorId: interaction.member?.user?.id });
+    } catch (e) { return ephemeral('⚠️ ' + e.message); }
+    return ephemeral(`✅ Anonyme Umfrage mit **${options.length} Spielern** ist gepostet.`);
+  }
+
+  // ---------- Event/Umfrage per Panel ----------
+  const evStore = () => getStore({ name: 'rsvp-events', siteID: process.env.NETLIFY_SITE_ID, token: process.env.NETLIFY_BLOBS_TOKEN });
+  if (id.startsWith('bdp:ev_new:')) {
+    const anon = id.endsWith(':1');
+    const f = (cid, label, req, ph, style = 1, max = 100) => ({ type: 1, components: [{ type: 4, custom_id: cid, label, style, required: req, placeholder: ph, max_length: max }] });
+    return json(200, { type: 9, data: { custom_id: `bdp:ev_modal:${anon ? 1 : 0}`, title: anon ? 'Anonyme Umfrage' : 'Event erstellen', components: [
+      f('titel', anon ? 'Frage / Titel' : 'Titel', true, anon ? 'z. B. Training am Freitag?' : 'z. B. Cup Abend'),
+      f('datum', 'Datum (TT.MM.JJJJ)', true, '05.11.2026', 1, 10),
+      f('uhrzeit', 'Uhrzeit (HH:MM)', true, '20:00', 1, 5),
+      f('limit', anon ? 'Limit Ja-Stimmen (leer = 99)' : 'Limit Zusagen (leer = 11)', false, anon ? '99' : '11', 1, 3),
+      f('info', 'Info / Beschreibung (optional)', false, 'z. B. Champions Cup | Lobby: Musti', 2, 900),
+    ] } });
+  }
+  if (id.startsWith('bdp:ev_modal:')) {
+    const anon = id.endsWith(':1');
+    const titel = modalValue(interaction, 'titel'), datum = modalValue(interaction, 'datum'), uhrzeit = modalValue(interaction, 'uhrzeit');
+    const limRaw = modalValue(interaction, 'limit'), info = modalValue(interaction, 'info');
+    const dm = datum.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/), tm = uhrzeit.match(/^(\d{1,2})[:.](\d{2})$/);
+    if (!dm || !tm) return ephemeral('❌ Datum bitte als **TT.MM.JJJJ** und Uhrzeit als **HH:MM** eintragen.');
+    const limit = limRaw === '' ? (anon ? 99 : 11) : Number(limRaw);
+    if (!Number.isInteger(limit) || limit < 1) return ephemeral('❌ Das Limit muss eine Zahl ab 1 sein.');
+    const draft = { titel, datum: `${dm[1]}.${dm[2]}.${dm[3].length === 2 ? '20' + dm[3] : dm[3]}`, uhrzeit: `${tm[1]}:${tm[2]}`, limit, info, anonym: anon, channelId: interaction.channel_id };
+    await evStore().setJSON(`draft-${interaction.member.user.id}`, draft);
+    return ephemeral(`**${anon ? '🕵️ Anonyme Umfrage' : '📅 Event'}: ${titel}**\nFür welche Mannschaft? (bestimmt, wer bei „Wer fehlt noch?“ zählt)`, {
+      components: [{ type: 1, components: [{ type: 3, custom_id: 'bdp:ev_team', placeholder: 'Mannschaft wählen…', options: [
+        { label: 'Alle', value: '-', emoji: { name: '👥' } },
+        { label: KADER_TEAMS['1'].label, value: '1 Mannschaft', emoji: { name: '🐉' } },
+        { label: KADER_TEAMS['2'].label, value: '2 Mannschaft', emoji: { name: '🌙' } },
+        { label: 'Tester', value: 'Tester', emoji: { name: '🧪' } },
+      ] }] }],
+    });
+  }
+  if (id === 'bdp:ev_team') {
+    const st = evStore();
+    const draft = await st.get(`draft-${interaction.member.user.id}`, { type: 'json' });
+    if (!draft) return json(200, { type: 7, data: { content: 'Der Entwurf ist abgelaufen – bitte neu starten.', components: [] } });
+    const team = interaction.data.values?.[0];
+    const options = [
+      { name: 'titel', value: draft.titel }, { name: 'datum', value: draft.datum }, { name: 'uhrzeit', value: draft.uhrzeit },
+      { name: 'limit', value: draft.limit }, { name: 'anonym', value: draft.anonym },
+      ...(draft.info ? [{ name: 'info', value: draft.info }] : []),
+      ...(team && team !== '-' ? [{ name: 'mannschaft', value: team }] : []),
+    ];
+    // Event wie bei /event anlegen, aber direkt in den Panel-Kanal posten
+    const fake = { ...interaction, channel_id: draft.channelId, data: { name: 'event', options } };
+    const res = await handleCreateEvent(fake, st, { postToChannel: true });
+    await st.delete(`draft-${interaction.member.user.id}`);
+    const body = JSON.parse(res.body);
+    return json(200, { type: 7, data: { content: body.data?.content || '✅ Gepostet!', components: [] } });
+  }
+
   if (id.startsWith('bdp:lu:')) {
     const team = id.split(':')[2];
     return json(200, { type: 9, data: { custom_id: `bdp:lu_modal:${team}`, title: `Aufstellung · ${KADER_TEAMS[team]?.label || ''}`.slice(0, 45), components: [{ type: 1, components: [{ type: 4, custom_id: 'titel', style: 1, label: 'Titel (optional)', required: false, max_length: 60, placeholder: 'z. B. Aufstellung Cup' }] }] } });
@@ -1318,6 +1483,21 @@ exports.handler = async (event) => {
     return ephemeral(`📜 Regeln gepostet.${info ? '\n' + info : ''}`);
   }
 
+  if (interaction.type === 3 && String(interaction.data?.custom_id || '').startsWith('poll:')) {
+    const P = require('./lib/polls');
+    const [, act, pid, idx] = interaction.data.custom_id.split(':');
+    if (act === 'end') {
+      if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können die Umfrage beenden.');
+      const p = await P.closePoll(pid);
+      return ephemeral(p ? '🏁 Umfrage beendet – das Ergebnis steht jetzt in der Nachricht.' : 'Diese Umfrage ist schon beendet.');
+    }
+    const r = await P.vote(pid, interaction.member?.user?.id, Number(idx));
+    if (r.error) return ephemeral(r.error);
+    // Stimmenzahl in der Umfrage aktualisieren (ohne zu verraten, wer was gewählt hat)
+    await fetch(`https://discord.com/api/v10/channels/${r.p.channelId}/messages/${r.p.messageId}`, { method: 'PATCH', headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ embeds: [P.liveEmbed(r.p)] }) }).catch(() => {});
+    return ephemeral(r.removed ? '↩️ Deine Stimme wurde zurückgenommen.' : `🕵️ Deine Stimme: **${r.p.options[Number(idx)]}** – bleibt anonym. Nochmal klicken = zurücknehmen, anderer Name = ändern.`);
+  }
+
   if (interaction.type === 3 && interaction.data?.custom_id === 'srules:ok') {
     const { already, roleOk } = await require('./lib/server-rules').accept(interaction.member?.user?.id, interaction.guild_id);
     if (!roleOk) return ephemeral('✅ Regeln akzeptiert – ⚠️ die Rolle „Verifiziert“ konnte aber nicht vergeben werden. Bitte melde dich bei einem Admin.');
@@ -1369,6 +1549,10 @@ exports.handler = async (event) => {
     return handleKaderModal(interaction);
   }
 
+  if (interaction.type === 5 && interaction.data.custom_id.startsWith('lineup:pubmodal:')) {
+    return handleLineupPub(interaction);
+  }
+
   if (interaction.type === 5 && interaction.data.custom_id.startsWith('lineup:sendmodal:')) {
     return handleLineupSendModal(interaction);
   }
@@ -1378,6 +1562,9 @@ exports.handler = async (event) => {
   }
 
   if (interaction.type === 3) {
+    if (interaction.data.custom_id.startsWith('lineup:pub')) {
+      return handleLineupPub(interaction);
+    }
     if (interaction.data.custom_id.startsWith('lineup:')) {
       return handleLineupComponent(interaction);
     }

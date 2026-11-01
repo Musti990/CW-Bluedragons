@@ -22,6 +22,7 @@ exports.handler = async () => {
         { name: 'info', description: 'Zusatzinfo', type: 3, required: false },
         { name: 'beschreibung', description: 'Ausführlichere Beschreibung des Events', type: 3, required: false },
         { name: 'bild', description: 'Bild für das Event', type: 11, required: false },
+        { name: 'anonym', description: 'Anonyme Umfrage: nur Zahlen, keine Namen', type: 5, required: false },
         {
           name: 'mannschaft',
           description: 'Für welche Mannschaft?',
@@ -103,10 +104,11 @@ exports.handler = async () => {
 
   commands.push({
     name: 'panel',
-    description: 'Postet ein Bedien-Panel in diesen Kanal (Session oder Aufstellung) – nur Admins',
+    description: 'Postet ein Bedien-Panel in diesen Kanal (Session, Aufstellung, Event) – nur Admins',
     options: [{ name: 'typ', description: 'Welches Panel?', type: 3, required: true, choices: [
       { name: 'Session (Spielberichte starten/beenden)', value: 'session' },
       { name: 'Aufstellung', value: 'aufstellung' },
+      { name: 'Event & anonyme Umfrage', value: 'event' },
     ] }],
   });
 

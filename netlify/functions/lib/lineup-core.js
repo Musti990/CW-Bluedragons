@@ -174,6 +174,15 @@ async function requestLineupPublish(payload) {
   }
 }
 
+async function requestLineupRepublish(pubId) {
+  await lineupStore().setJSON(`repub-${pubId}`, { pubId, createdAt: Date.now() });
+  try {
+    await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-worker-secret': process.env.CRON_SECRET || '' }, body: JSON.stringify({ action: 'republish', pubId }), signal: AbortSignal.timeout(1200) });
+  } catch {
+    // Timeout gewollt
+  }
+}
+
 /** „20:30“ + optional „02.11.“ → Unix-Zeit (Wiener Zeit). Ohne Datum: heute, bzw. morgen, wenn die Uhrzeit schon vorbei ist. */
 function parseKickoff(timeRaw, dateRaw) {
   const tm = String(timeRaw || '').trim().match(/^(\d{1,2})[:.](\d{2})$/);
@@ -196,6 +205,7 @@ function parseKickoff(timeRaw, dateRaw) {
 }
 
 module.exports = {
+  requestLineupRepublish,
   requestLineupPublish,
   parseKickoff,
   FORMATION_NAMES,

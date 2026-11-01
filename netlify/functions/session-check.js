@@ -117,6 +117,22 @@ exports.handler = async () => {
     results.push({ kader: 'Fehler: ' + err.message });
   }
 
+  // Absicherung: offene Aufstellungs-Aufträge (Posten / Ersetzen) nachholen
+  try {
+    const lu = await require('./lib/lineup-render').processPendingLineups();
+    if (lu?.length) results.push({ aufstellung: lu });
+  } catch (err) {
+    results.push({ aufstellung: 'Fehler: ' + err.message });
+  }
+
+  // Spieler-Umfragen nach Ablauf schließen
+  try {
+    const n = await require('./lib/polls').processPolls();
+    if (n) results.push({ umfragen: n });
+  } catch (err) {
+    results.push({ umfragen: 'Fehler: ' + err.message });
+  }
+
   // Willkommen / Good Bye (Mitgliederliste vergleichen)
   try {
     const g = await require('./lib/greetings').runGreetings(process.env.GUILD_ID);

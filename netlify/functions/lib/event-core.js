@@ -143,15 +143,26 @@ async function buildEmbed(ev) {
 
   if (ev.beschreibung) fields.push({ name: '📝 Beschreibung', value: '```\n' + escapeMd(ev.beschreibung) + '\n```' });
 
-  fields.push({ name: acceptedHeader, value: fmtMentions(ev.accepted) });
-  fields.push({ name: `❌ Kann nicht (${ev.declined.length})`, value: fmtMentions(ev.declined) });
+  if (ev.anonym) {
+    // Anonyme Umfrage: nur Zahlen, keine Namen
+    const total = ev.accepted.length + ev.declined.length;
+    const pct = (n) => (total ? Math.round((n / total) * 100) : 0);
+    const bar = (n) => { const f = Math.round(pct(n) / 10); return '▰'.repeat(f) + '▱'.repeat(10 - f); };
+    fields.push({ name: `✅ Ja (${ev.accepted.length})`, value: `${bar(ev.accepted.length)} **${pct(ev.accepted.length)} %**` });
+    fields.push({ name: `❌ Nein (${ev.declined.length})`, value: `${bar(ev.declined.length)} **${pct(ev.declined.length)} %**` });
+    fields.push({ name: '🕵️ Anonym', value: `**${total}** ${total === 1 ? 'Stimme' : 'Stimmen'} · niemand sieht, wer was gewählt hat` });
+  } else {
+    fields.push({ name: acceptedHeader, value: fmtMentions(ev.accepted) });
+    fields.push({ name: `❌ Kann nicht (${ev.declined.length})`, value: fmtMentions(ev.declined) });
+  }
 
-  const description = ev.creatorId
-    ? `<@${ev.creatorId}> hat eine Session angesetzt. Bitte gib unten deine Rückmeldung ab.`
-    : `**${escapeMd(ev.creator)}** hat eine Session angesetzt. Bitte gib unten deine Rückmeldung ab.`;
+  const who = ev.creatorId ? `<@${ev.creatorId}>` : `**${escapeMd(ev.creator)}**`;
+  const description = ev.anonym
+    ? `${who} hat eine **anonyme Umfrage** gestartet. Stimm unten ab – deine Wahl bleibt geheim.`
+    : `${who} hat eine Session angesetzt. Bitte gib unten deine Rückmeldung ab.`;
 
   return {
-    title: `${ev.title} · Session`,
+    title: `${ev.title} · ${ev.anonym ? 'Umfrage 🕵️' : 'Session'}`,
     description,
     color: 0x1f6bff,
     thumbnail: ev.imageUrl ? { url: ev.imageUrl } : undefined,
