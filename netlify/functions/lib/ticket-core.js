@@ -22,7 +22,7 @@ const INFO_PARTS = [
 const INFO_FIELDS = INFO_PARTS.flat();
 const TESTER_QUESTIONS = INFO_FIELDS.map((f) => `${f.label}:`);
 const INFO_CHANNEL_ID = '1565800045670830112'; // ausgefüllte Infoblätter landen zusätzlich hier
-const ARCHIVE_CHANNEL = 'ticket-archiv'; // hier landen geschlossene Tickets
+const ARCHIVE_CHANNEL = '🗂️-𝑻𝒊𝒄𝒌𝒆𝒕-𝑨𝒓𝒄𝒉𝒊𝒗'; // hier landen geschlossene Tickets (erkannt am Text „Ticket-Archiv“, fest per ARCHIVE_CHANNEL_ID)
 // Kategorie für die Ticket-Kanäle: „~~~~~~ 🔱 𝑽𝑴 - 𝑩𝒆𝒓𝒆𝒊𝒄𝒉  🔱~~~~~“
 // Erkannt wird sie am Text „VM-Bereich“ (Schrift, Emojis und Zeichen drumherum egal).
 // Alternativ fest per Netlify-Variable TICKET_CATEGORY_ID.
@@ -233,7 +233,7 @@ async function fetchAllMessages(channelId) {
 async function archiveAndCloseTicket(guildId, applicantId, channelId, closedBy) {
   const channelsRes = await api(`/guilds/${guildId}/channels`);
   const channels = channelsRes.ok ? await channelsRes.json() : [];
-  const archive = channels.find((c) => c.type === 0 && c.name.toLowerCase() === ARCHIVE_CHANNEL);
+  const archive = channels.find((c) => c.type === 0 && c.id === process.env.ARCHIVE_CHANNEL_ID) || channels.find((c) => c.type === 0 && normName(c.name).includes('ticketarchiv'));
   if (!archive) return { error: `Es gibt keinen Kanal **#${ARCHIVE_CHANNEL}**. Bitte anlegen, dann nochmal schließen.` };
 
   const ticketChannel = channels.find((c) => c.id === channelId);

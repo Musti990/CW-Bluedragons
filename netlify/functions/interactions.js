@@ -462,7 +462,7 @@ const GENERAL_ROLES = [
   { name: 'Tester', label: 'Tester', tag: 'Tester', emoji: '🧪', style: 1, row: 0 },
   { name: 'Late Night Spieler', label: 'Late Night', tag: null, emoji: '🌙', style: 2, row: 0 },
   { name: 'ProClubs Member', label: 'ProClubs Member', tag: null, emoji: '🎮', style: 1, row: 1 },
-  { name: 'CWT Member', label: 'CWT Member', tag: null, emoji: '🏆', style: 1, row: 1 },
+  { name: 'FUT Member', label: 'FUT Member', tag: null, emoji: '🃏', style: 1, row: 1 },
 ];
 const ROLE_TAGS = GENERAL_ROLES.map((r) => r.tag).filter(Boolean);
 
@@ -674,7 +674,7 @@ async function handleSessionStart(interaction) {
   return json(200, {
     type: 4,
     data: {
-      content: `✅ Session gestartet für **${club.label}** (ID ${club.clubId}). Ich prüfe alle 2 Minuten auf neue Spiele und poste die Statistiken in #match-history.\nBeenden mit **/sessionend** – dann kommt die Session-Bilanz.`,
+      content: `✅ Session gestartet für **${club.label}** (ID ${club.clubId}). Ich prüfe alle 2 Minuten auf neue Spiele und poste die Statistiken in #📊-𝑴𝒂𝒕𝒄𝒉-𝑺𝒕𝒂𝒕𝒊𝒔𝒕𝒊𝒌.\nBeenden mit **/sessionend** – dann kommt die Session-Bilanz.`,
       flags: 64,
     },
   });
@@ -690,7 +690,7 @@ async function handleSessionEnd() {
     ending.push(`${session.label} (${session.matches.length} ${session.matches.length === 1 ? 'Spiel' : 'Spiele'} bisher)`);
   }
   const content = ending.length
-    ? `🏁 Session wird beendet: ${ending.join(', ')}.\nDie Bilanz kommt in ca. 2–4 Minuten in #match-history (letzte Spiele werden noch mitgenommen).`
+    ? `🏁 Session wird beendet: ${ending.join(', ')}.\nDie Bilanz kommt in ca. 2–4 Minuten in #📊-𝑴𝒂𝒕𝒄𝒉-𝑺𝒕𝒂𝒕𝒊𝒔𝒕𝒊𝒌 (letzte Spiele werden noch mitgenommen).`
     : 'Es läuft gerade keine Session.';
   return json(200, { type: 4, data: { content, flags: 64 } });
 }
@@ -1178,7 +1178,7 @@ function sessionPanel() {
     embeds: [{
       color: 0x1f6bff,
       title: '🎮 SESSION · PRO CLUBS STATISTIKEN',
-      description: 'Starte eine Session – der Bot prüft dann alle 2 Minuten auf neue Spiele und postet Spielbericht und Spielerstatistik in **#match-history**.\nMit **Session beenden** kommt die Bilanz (Spieler nach Ø-Rating).',
+      description: 'Starte eine Session – der Bot prüft dann alle 2 Minuten auf neue Spiele und postet Spielbericht und Spielerstatistik in **#📊-𝑴𝒂𝒕𝒄𝒉-𝑺𝒕𝒂𝒕𝒊𝒔𝒕𝒊𝒌**.\nMit **Session beenden** kommt die Bilanz (Spieler nach Ø-Rating).',
       thumbnail: { url: `${process.env.URL}/blue-dragons-logo.png` },
       footer: { text: 'Nur Admins · Antworten sieht nur, wer klickt' },
     }],

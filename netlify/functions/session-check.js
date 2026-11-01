@@ -117,6 +117,14 @@ exports.handler = async () => {
     results.push({ kader: 'Fehler: ' + err.message });
   }
 
+  // Willkommen / Good Bye (Mitgliederliste vergleichen)
+  try {
+    const g = await require('./lib/greetings').runGreetings(process.env.GUILD_ID);
+    if (g) results.push({ greetings: g });
+  } catch (err) {
+    results.push({ greetings: 'Fehler: ' + err.message });
+  }
+
   // Server-Regeln: bestehenden Mitgliedern einmalig „Verifiziert“ geben (in Schritten)
   try {
     const bf = await require('./lib/server-rules').processBackfill(15000);

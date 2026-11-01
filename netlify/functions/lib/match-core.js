@@ -10,7 +10,10 @@ const { buildMatchReportSvg, buildPlayerStatsSvg, buildSessionSummarySvg } = req
 
 const impit = new Impit({ browser: 'chrome' });
 const EA_BASE = 'https://proclubs.ea.com/api/fc';
-const TARGET_CHANNEL_NAME = 'match-history';
+const TARGET_CHANNEL_NAME = '📊-𝑴𝒂𝒕𝒄𝒉-𝑺𝒕𝒂𝒕𝒊𝒔𝒕𝒊𝒌';
+// Erkannt am Text „Match-Statistik“ (Schrift/Emojis egal), alter Name „match-history“ geht auch; fest per MATCH_CHANNEL_ID
+const _norm = (n) => String(n || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
+
 
 async function eaFetch(path) {
   const res = await impit.fetch(`${EA_BASE}${path}`, {
@@ -156,7 +159,9 @@ async function findChannelId() {
   });
   if (!res.ok) return null;
   const channels = await res.json();
-  const match = channels.find((c) => c.type === 0 && c.name === TARGET_CHANNEL_NAME);
+  const match = channels.find((c) => c.type === 0 && c.id === process.env.MATCH_CHANNEL_ID)
+    || channels.find((c) => c.type === 0 && _norm(c.name).includes('matchstatistik'))
+    || channels.find((c) => c.type === 0 && _norm(c.name).includes('matchhistory'));
   cachedChannelId = match ? match.id : null;
   return cachedChannelId;
 }

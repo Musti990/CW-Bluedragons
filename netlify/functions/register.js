@@ -41,7 +41,7 @@ exports.handler = async () => {
     },
     {
       name: 'rolle',
-      description: 'Postet die Rollenwahl (Aushilfe, Tester, Late Night, ProClubs, CWT)',
+      description: 'Postet die Rollenwahl (Aushilfe, Tester, Late Night, ProClubs, FUT)',
     },
     {
       name: 'kader',
