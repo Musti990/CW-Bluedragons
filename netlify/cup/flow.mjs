@@ -238,8 +238,7 @@ export async function doCheckinEnd(channelId) {
   for (const g of t.groups) {
     const ch = cfg.channels["g" + g.name]; if (!ch) continue;
     await refreshGroupCheckin(t, g.name);
-    const plan = await sendMessage(ch, V.groupPlan(t, g, cfg.channels["r" + g.name]));
-    if (plan) { await mutate(tKey(channelId), (x) => { x.msgs.groups[g.name] = { ...(x.msgs.groups[g.name] || {}), plan: plan.id }; }); }
+    // Kein Text-Spielplan mehr – die Gruppen bekommen nur noch die Grafik (bei jeder Freigabe)
   }
   const fresh = await get(tKey(channelId));
   // Ergebnis-Panels von „Los geht's nach dem Check-in“ auf Spieltag 1 mit Knöpfen umstellen
@@ -253,7 +252,7 @@ export async function doCheckinEnd(channelId) {
 const gfxRow = (m) => ({ home: m.home, away: m.away, h: m.status === "fertig" ? m.h : null, a: m.status === "fertig" ? m.a : null, pen: m.status === "fertig" ? m.pen : null });
 
 /** Spieltag-Bild + Tabelle für eine Gruppe (bzw. die Liga). Neu posten (fresh) oder die letzte Nachricht aktualisieren. */
-export async function refreshGroupGraphic(t, gName, { fresh: isNew = false } = {}) {
+export async function refreshGroupGraphic(t, gName, { fresh: isNew = false, content = null, roles = [] } = {}) {
   try {
     const cfg = await getConfig();
     const ch = cfg.channels["g" + gName];
@@ -272,7 +271,9 @@ export async function refreshGroupGraphic(t, gName, { fresh: isNew = false } = {
     if (ms.length) files.push({ name: `spieltag-${gName}-${round}.png`, buffer: await G.roundImage({ title: `${label} · Spieltag ${round}`, sub: t.name, matches: ms.map((m) => ({ ...gfxRow(m), hp: pf(m.home), ap: pf(m.away) })) }) });
     files.push({ name: `tabelle-${gName}.png`, buffer: await G.tableImage({ title: t.league ? "Liga · Tabelle" : `Gruppe ${gName}`, sub: t.name, label: t.league ? "Ligasystem" : `Gruppe ${gName}`, info: t.league ? `K.-o.-Phase: Top ${d.top} → ${T.koRoundName({ koSize: (await import("./data.mjs")).koSizeFor(t.fmt, t.mode) }, 1)}` : `K.-o.-Phase: Platz 1${d.top > 1 ? " + 2" : ""}`, rows, qualify: d.top, maybe: d.ex ? 1 : 0 }) });
     const cur = (await get(tKey(t.channelId)))?.msgs?.gfx?.[gName];
-    const payload = { content: `📊 **${label} · Spieltag ${round}**` };
+    const payload = { content: content || `📊 **${label} · Spieltag ${round}**`, ...(roles.length ? { allowed_mentions: { roles } } : {}) };
+    // Beim Aktualisieren den Text nicht ändern (sonst würde erneut markiert)
+    if (!isNew && cur?.id) delete payload.content;
     let id = cur?.id && cur.round === round && !isNew ? cur.id : null;
     const res = await sendFiles(ch, payload, files, id);
     if (!res && id) id = null;
@@ -309,8 +310,10 @@ async function postGroupFreigabe(t, g, round, cfg) {
   const fresh = (await get(tKey(t.channelId))) || t;
   const keep = [fresh.msgs?.groups?.[g.name]?.plan, fresh.msgs?.groups?.[g.name]?.res];
   try { await purgeExcept(ch, keep); } catch (e) { console.error("Gruppenkanal leeren:", e?.message || e); }
-  await sendMessage(ch, V.freigabePost(t, g, round, role, cfg.channels["r" + g.name]));
-  await refreshGroupGraphic((await get(tKey(t.channelId))) || t, g.name, { fresh: true });
+  // Nur das Bild (Spieltag + Tabelle), dazu eine kurze Zeile mit Markierung, damit alle Bescheid bekommen
+  const label = t.league ? "Liga" : `Gruppe ${g.name}`;
+  const res = cfg.channels["r" + g.name];
+  await refreshGroupGraphic((await get(tKey(t.channelId))) || t, g.name, { fresh: true, content: `${role ? `<@&${role}> ` : ""}🟢 **${label} · Spieltag ${round}${t.league ? ` von ${t.maxRounds}` : ""}** – ihr dürft spielen!${res ? ` Ergebnisse in <#${res}>.` : ""}`, roles: role ? [role] : [] });
 }
 
 /** KO-Kanal leeren (Turnierbaum und ggf. Ergebnis-Panel bleiben) und die neue Runde posten */
@@ -633,7 +636,7 @@ export async function setupWeek({ startY, startMo, startD, kickoff, post, name }
  * aus freien Vereinen. Test-Teams sind automatisch eingecheckt, ihre Spiele gegeneinander spielt der Bot selbst.
  * Keine Statistik, keine Trophäen, kein TOTT, Siegerbild nur im Turnierkanal.
  */
-export async function startTestCup(channelId, uid, size = 8) {
+export async function startTestCup(channelId, uid, size = 8, mode = null) {
   const busy = await activeTournament();
   if (busy && T.ACTIVE.includes(busy.status)) throw new Error("Es läuft gerade ein anderer Cup – erst abbrechen oder fertig spielen.");
   const here = await get(tKey(channelId));
@@ -642,7 +645,7 @@ export async function startTestCup(channelId, uid, size = 8) {
   const mine = clubOfUser(clubs, uid);
   const virtual = Array.from({ length: size - (mine ? 1 : 0) }, (_, k) => `Testspieler-${String(k + 1).padStart(2, "0")}`);
   await launchTournament({ channelId, name: "🧪 Test-Cup", times: timesFromKickoff(Date.now() + 3 * 3600000) }, { replace: true });
-  const { value: t } = await mutate(tKey(channelId), (x) => { x.test = true; x.virtual = virtual; x.reg = [...(mine ? [mine.club] : []), ...virtual]; });
+  const { value: t } = await mutate(tKey(channelId), (x) => { x.test = true; if (mode) x.mode = mode; x.virtual = virtual; x.reg = [...(mine ? [mine.club] : []), ...virtual]; });
   await refreshSignup(t);
   return { mine, virtual };
 }

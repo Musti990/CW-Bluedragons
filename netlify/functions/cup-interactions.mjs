@@ -76,7 +76,18 @@ async function adminPanelAction(i, context, cfg, act) {
       if (!t) return eph("Gerade läuft kein Cup.");
       return eph(`🛑 **${V.esc(t.name)}** wirklich abbrechen? Alle Turnier-Rollen werden entfernt.`, { components: [{ type: 1, components: [{ type: 2, style: 4, label: "Ja, abbrechen", custom_id: "adm:abbrechen_ok" }] }] });
     case "abbrechen_ok": return admin(asAdminCmd(i, "abbrechen", [], t?.channelId), context, cfg);
-    case "testcup": return admin(asAdminCmd(i, "testcup-start", [{ name: "teams", value: Number(i.data.values?.[0] || 8) }]), context, cfg);
+    case "testcup": return eph(`**🧪 Test-Cup mit ${Number(i.data.values?.[0] || 8)} Spielern** – welcher Modus?`, { components: [V.modeRow(`adm:test_mode:${Number(i.data.values?.[0] || 8)}`)] });
+    case "test_mode": {
+      const n = Number(i.data.custom_id.split(":")[2] || 8), mode = i.data.values?.[0] || "auto";
+      await mutate("config", (c) => { c.testMode = mode; }, { initial: {} });
+      return admin(asAdminCmd(i, "testcup-start", [{ name: "teams", value: n }, { name: "modus", value: mode }]), context, cfg);
+    }
+    case "neu_mode": {
+      const d = await get(`newcup:${uidOf(i)}`);
+      if (!d) return eph("Der Entwurf ist abgelaufen – bitte nochmal „Neuer Cup“.");
+      const ch = cfg.channels.signup || i.channel_id;
+      return manualCup({ ...i, channel_id: ch, type: 2, data: { name: "ut-turnier", options: [{ name: "name", value: d.name }, { name: "anpfiff", value: d.anpfiff }, { name: "modus", value: i.data.values?.[0] || "auto" }] } }, context);
+    }
     case "edit":
       if (!t || !["gruppen", "ko"].includes(t.status)) return eph("Gerade laufen keine Spiele.");
       return eph("", V.editPicker(t));
@@ -335,7 +346,8 @@ async function manualCup(i, context) {
   if (kickoff - 60 * 60000 < Date.now() + 2 * 60000) return eph("Der Anmeldeschluss (60 Min. vor Anpfiff) muss in der Zukunft liegen.");
   return background(i, context, async () => {
     let t = await F.launchTournament({ channelId: i.channel_id, name: o.name.trim(), times: F.timesFromKickoff(kickoff) });
-    return `✅ **${t.name}** ist erstellt.`;
+    if (["auto", "gruppen", "liga"].includes(o.modus)) { t = (await mutate(tKey(i.channel_id), (x) => { x.mode = o.modus; })).value; await F.refreshSignup(t); }
+    return `✅ **${t.name}** ist erstellt · Modus: **${MODE_NAME[t.mode || "auto"]}**.`;
   });
 }
 
@@ -388,8 +400,8 @@ async function admin(i, context, cfg) {
   if (sub.name === "testcup-start") {
     return background(i, context, async () => {
       const size = Number(o.teams || 8);
-      const r = await F.startTestCup(i.channel_id, uidOf(i), size);
-      return `🧪 **Test-Cup erstellt** (${size} Spieler).\n${r.mine ? `• Du spielst mit: ${flagOf(r.mine.club)} **${V.esc(r.mine.club)}** – du bekommst echte Gruppen- und KO-Rollen.` : "• ⚠️ Du bist nicht registriert – registrier dich zuerst, damit du selbst mitspielen und die Rollen testen kannst."}\n• ${r.virtual.length} Testspieler (automatisch eingecheckt, spielen gegeneinander von selbst)\n\n**So geht's weiter:**\n1. \`/ut-admin anmeldeschluss\` → Auslosung\n2. Im Gruppenkanal einchecken, dann \`/ut-admin checkin-ende\`\n3. Deine Spiele über die Knöpfe melden (der Test-Gegner bestätigt nach 2 Min. automatisch) oder \`/ut-admin ergebnis\`\n4. \`/ut-admin testcup-weiter\` spielt die Test-Spiele sofort, sonst passiert es jede Minute von selbst\n5. \`/ut-admin rollen-check\` zum Prüfen der Rollen\n-# Keine Statistik, keine Trophäen. Abbrechen: \`/ut-admin abbrechen\`.`;
+      const r = await F.startTestCup(i.channel_id, uidOf(i), size, ["auto", "gruppen", "liga"].includes(o.modus) ? o.modus : null);
+      return `🧪 **Test-Cup erstellt** (${size} Spieler${o.modus && o.modus !== "auto" ? ` · ${MODE_NAME[o.modus]}` : ""}).\n${r.mine ? `• Du spielst mit: ${flagOf(r.mine.club)} **${V.esc(r.mine.club)}** – du bekommst echte Gruppen- und KO-Rollen.` : "• ⚠️ Du bist nicht registriert – registrier dich zuerst, damit du selbst mitspielen und die Rollen testen kannst."}\n• ${r.virtual.length} Testspieler (automatisch eingecheckt, spielen gegeneinander von selbst)\n\n**So geht's weiter:**\n1. \`/ut-admin anmeldeschluss\` → Auslosung\n2. Im Gruppenkanal einchecken, dann \`/ut-admin checkin-ende\`\n3. Deine Spiele über die Knöpfe melden (der Test-Gegner bestätigt nach 2 Min. automatisch) oder \`/ut-admin ergebnis\`\n4. \`/ut-admin testcup-weiter\` spielt die Test-Spiele sofort, sonst passiert es jede Minute von selbst\n5. \`/ut-admin rollen-check\` zum Prüfen der Rollen\n-# Keine Statistik, keine Trophäen. Abbrechen: \`/ut-admin abbrechen\`.`;
     });
   }
   if (sub.name === "testcup-weiter") {
@@ -446,7 +458,7 @@ async function component(i, context) {
   const id = i.data.custom_id, uid = uidOf(i);
 
   // --- Admin-Panel ---
-  if (id.startsWith("adm:")) return adminPanelAction(i, context, cfg, id.slice(4));
+  if (id.startsWith("adm:")) return adminPanelAction(i, context, cfg, id.slice(4).split(":")[0]);
 
   // --- Trophäenhalle ---
   if (id === "stats_me") return eph(await (await import("../cup/trophies.mjs")).myStats(uid));
@@ -629,8 +641,10 @@ async function modal(i, context) {
     }
     if (kind === "profil") return admin(asAdminCmd(i, "profil-löschen", [{ name: "spieler", value: v.spieler }]), context, cfg);
     if (kind === "neu") {
-      const ch = cfg.channels.signup || i.channel_id;
-      return manualCup({ ...i, channel_id: ch, type: 2, data: { name: "ut-turnier", options: [{ name: "name", value: String(v.name || "").trim() || "Ultimate Team Cup" }, { name: "anpfiff", value: String(v.anpfiff || "").trim() }] } }, context);
+      const name = String(v.name || "").trim() || "Ultimate Team Cup", anpfiff = String(v.anpfiff || "").trim();
+      if (!parseVienna(anpfiff)) return eph("Anpfiff bitte so angeben: `31.10.2026 20:00`");
+      await set(`newcup:${uidOf(i)}`, { name, anpfiff });
+      return eph(`**🆕 ${V.esc(name)}** · Anpfiff ${V.esc(anpfiff)}\nWelcher Modus?`, { components: [V.modeRow("adm:neu_mode")] });
     }
     return eph("Unbekannte Aktion.");
   }

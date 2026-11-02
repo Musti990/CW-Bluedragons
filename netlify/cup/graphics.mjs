@@ -15,37 +15,26 @@ function fit(x, text, font, size, maxW, min = 12) {
 /** Hintergrund + Kopf mit CW-Logo + großem Silber-Titel. Gibt die y-Position unter dem Titel zurück. */
 async function frame(x, W, H, title, sub) {
   const dir = assetDir();
-  const bg = await loadImage(path.join(dir, "cw-bg.jpg"));
-  // Hintergrund „cover“
-  const s = Math.max(W / bg.width, H / bg.height);
-  x.drawImage(bg, (W - bg.width * s) / 2, (H - bg.height * s) / 2, bg.width * s, bg.height * s);
-  const fade = x.createLinearGradient(0, 0, 0, H); fade.addColorStop(0, "rgba(2,6,20,.15)"); fade.addColorStop(1, "rgba(2,6,20,.75)");
-  x.fillStyle = fade; x.fillRect(0, 0, W, H);
-  // Kopf
-  const hd = await loadImage(path.join(dir, "cw-header.jpg"));
-  const hh = W * (hd.height / hd.width);
-  x.drawImage(hd, 0, 0, W, hh);
-  const hf = x.createLinearGradient(0, hh * 0.88, 0, hh); hf.addColorStop(0, "rgba(2,6,20,0)"); hf.addColorStop(1, "rgba(2,6,20,.9)");
-  x.fillStyle = hf; x.fillRect(0, hh * 0.88, W, hh * 0.12 + 2);
-  // Titel in Silber
-  let y = hh + W * 0.004;
-  const ts = fit(x, title.toUpperCase(), '{s}px "Bebas Neue"', Math.round(W * 0.085), W * 0.86);
-  const g = x.createLinearGradient(0, y, 0, y + ts); g.addColorStop(0, SILVER[0]); g.addColorStop(0.55, SILVER[1]); g.addColorStop(1, SILVER[2]);
+  // Ruhiger Hintergrund ohne Effekte
+  const bg = x.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, "#0b1736"); bg.addColorStop(1, "#050a1c");
+  x.fillStyle = bg; x.fillRect(0, 0, W, H);
+  // Komplettes CW-Logo (rund, freigestellt) oben mittig – kein abgeschnittener Banner-Streifen mehr
+  const logo = await loadImage(path.join(dir, "cw-round.png"));
+  const ls = Math.round(W * 0.17);
+  x.drawImage(logo, (W - ls) / 2, W * 0.03, ls, ls);
+  let y = W * 0.03 + ls + W * 0.012;
+  const ts = fit(x, title.toUpperCase(), '{s}px "Bebas Neue"', Math.round(W * 0.075), W * 0.86);
   x.textBaseline = "top";
-  x.shadowColor = "rgba(47,139,255,.9)"; x.shadowBlur = W * 0.02; x.fillStyle = g;
-  const T = title.toUpperCase(); x.fillText(T, (W - x.measureText(T).width) / 2, y);
-  x.shadowBlur = 0; x.lineWidth = Math.max(1, W * 0.0015); x.strokeStyle = "rgba(10,20,50,.9)"; x.strokeText(T, (W - x.measureText(T).width) / 2, y);
-  y += ts + W * 0.012;
+  const g = x.createLinearGradient(0, y, 0, y + ts); g.addColorStop(0, SILVER[0]); g.addColorStop(0.55, SILVER[1]); g.addColorStop(1, SILVER[2]);
+  const T = title.toUpperCase(); x.fillStyle = g; x.fillText(T, (W - x.measureText(T).width) / 2, y);
+  y += ts + W * 0.008;
   if (sub) {
-    // Untertitel-Band wie im Banner
-    fit(x, sub, '600 {s}px Montserrat', Math.round(W * 0.022), W * 0.7);
-    const sw = x.measureText(sub).width, bh = W * 0.045, bx = (W - sw) / 2 - W * 0.04;
-    x.fillStyle = "rgba(4,12,34,.92)"; x.strokeStyle = "rgba(170,200,255,.8)"; x.lineWidth = Math.max(1, W * 0.0018);
-    x.beginPath(); x.moveTo(bx, y + bh / 2); x.lineTo(bx + bh * 0.4, y); x.lineTo(W - bx - bh * 0.4, y); x.lineTo(W - bx, y + bh / 2); x.lineTo(W - bx - bh * 0.4, y + bh); x.lineTo(bx + bh * 0.4, y + bh); x.closePath(); x.fill(); x.stroke();
-    x.fillStyle = "#e8eefb"; x.textBaseline = "middle"; x.fillText(sub, (W - sw) / 2, y + bh / 2 + 1); x.textBaseline = "top";
-    y += bh + W * 0.02;
+    fit(x, sub, '600 {s}px Montserrat', Math.round(W * 0.02), W * 0.7);
+    x.fillStyle = "#6fa8ff"; x.fillText(sub, (W - x.measureText(sub).width) / 2, y);
+    y += W * 0.04;
   }
-  return y;
+  x.fillStyle = BLUE; x.fillRect(W * 0.06, y, W * 0.88, 3);
+  return y + W * 0.025;
 }
 
 function chip(x, X, Y, h, label) {
@@ -62,7 +51,7 @@ function chip(x, X, Y, h, label) {
  */
 export async function tableImage({ title, sub, info, label, rows, qualify = 2, maybe = 0 }) {
   fonts();
-  const W = 1600, rowH = 62, head = 470, H = head + 70 + 56 + rows.length * rowH + 110;
+  const W = 1600, rowH = 62, head = 600, H = head + 70 + 56 + rows.length * rowH + 80;
   const c = createCanvas(W, H), x = c.getContext("2d");
   let y = await frame(x, W, H, title, sub);
   y = Math.max(y, head - 20);

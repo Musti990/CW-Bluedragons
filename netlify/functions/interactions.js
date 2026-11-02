@@ -1283,7 +1283,7 @@ async function handleSchedule(interaction) {
   const save = async (change) => { s.lastChange = change; await st.setJSON(`sched-${sid}`, s); await S.requestRender(sid); };
   const f = (cid, label, req, value, ph, style = 1, max = 60) => ({ type: 1, components: [{ type: 4, custom_id: cid, label, style, required: req, value: value || undefined, placeholder: ph, max_length: max }] });
 
-  if (act === 'add') return json(200, { type: 9, data: { custom_id: `sched:addm:${sid}`, title: 'Freundschaftsspiel hinzufügen', components: [f('spiele', 'Spiele (eins pro Zeile, z. B. 22:20 Gegner FC)', true, '', '22:20 Gegner FC', 2, 600)] } });
+  if (act === 'add') return json(200, { type: 9, data: { custom_id: `sched:addm:${sid}`, title: 'Freundschaftsspiel hinzufügen', components: [f('spiele', 'Spiele (eins pro Zeile)', true, '', 'z. B. 22:20 Gegner FC', 2, 600)] } });
   if (act === 'addm') {
     const add = S.parseGames(val('spiele'));
     if (!add.length) return ephemeral('❌ Bitte mindestens ein Spiel eintragen.');
@@ -1495,7 +1495,7 @@ async function handlePanelAction(interaction) {
     const names = (last?.names || []).join('\n');
     return json(200, { type: 9, data: { custom_id: 'bdp:pu_modal', title: 'Spieler-Umfrage (anonym)', components: [
       { type: 1, components: [{ type: 4, custom_id: 'frage', style: 1, label: 'Frage', required: true, max_length: 120, value: 'Wer hat euch heute nicht gefallen?' }] },
-      { type: 1, components: [{ type: 4, custom_id: 'spieler', style: 2, label: 'Spieler (einer pro Zeile, 2–20)', required: true, max_length: 1000, value: names || undefined, placeholder: 'Musti\nLeon\nNoah\n…' }] },
+      { type: 1, components: [{ type: 4, custom_id: 'spieler', style: 2, label: 'Spieler (einer pro Zeile, 2–20)', required: true, max_length: 1000, value: names || undefined, placeholder: 'Musti, Leon, Noah … (je eine Zeile)' }] },
       { type: 1, components: [{ type: 4, custom_id: 'dauer', style: 1, label: 'Dauer (z. B. 30m, 2h, 1d – leer = 12h)', required: false, max_length: 6, placeholder: '12h' }] },
     ] } });
   }
@@ -1584,9 +1584,9 @@ async function handlePanelAction(interaction) {
     return json(200, { type: 9, data: { custom_id: `bdp:sp_modal:${team}`, title: `Spielplan · ${KADER_TEAMS[team]?.label || ''}`.slice(0, 45), components: [
       f('datum', 'Datum (TT.MM.JJJJ)', true, '01.11.2026', 1, 10, d),
       f('treffen', 'Treffen (HH:MM)', true, '19:30', 1, 5),
-      f('fs', 'Freundschaftsspiele (eins pro Zeile)', false, '19:45 Gegner FC\n20:10 Noch ein Gegner', 2, 600),
+      f('fs', 'Freundschaftsspiele (eins pro Zeile)', false, 'z. B. 19:45 Gegner FC', 2, 600),
       f('wettbewerb', 'Liga / Cup – Name (optional)', false, 'z. B. PL4 Quali Spiele', 1, 60),
-      f('spiele', 'Liga/Cup-Spiele (pro Zeile, H/A am Ende)', false, '20:15 FCG ESPORTS A\n20:40 RAPTORS UNITED H', 2, 900),
+      f('spiele', 'Liga/Cup-Spiele (pro Zeile, H/A am Ende)', false, 'z. B. 20:15 FCG ESPORTS A', 2, 900),
     ] } });
   }
   if (id.startsWith('bdp:sp_modal:')) {

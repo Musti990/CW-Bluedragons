@@ -142,19 +142,35 @@ async function renderAndSend(id) {
   const s = await st.get(`sched-${id}`, { type: 'json' });
   if (!s) return null;
   await st.delete(`schedjob-${id}`);
-  const png = await scheduleImage(s);
   const imageName = 'spielplan.png';
+  let png = null;
+  try { png = await scheduleImage(s); } catch (e) { console.error('Spielplan-Bild fehlgeschlagen, poste als Text:', e); }
   const body = payload(s, imageName);
+  if (!png) {
+    // Notlösung ohne Bild: alles als Text im Embed
+    const line = (g) => `\`${g.time || '–'}\`  vs **${g.opp}**${g.ha ? (g.ha === 'H' ? '  🏠 Heim' : '  ✈️ Auswärts') : ''}${g.res ? `  ·  **${g.res[0]}:${g.res[1]}** ${g.res[0] > g.res[1] ? '✅' : g.res[0] < g.res[1] ? '❌' : '➖'}` : ''}`;
+    const e = body.embeds[0];
+    delete e.image; delete body.attachments;
+    e.fields = [...(s.fs.length ? [{ name: '🤝 Freundschaftsspiele', value: s.fs.map(line).join('\n').slice(0, 1024) }] : []), ...(s.games.length ? [{ name: `🏆 ${s.wettbewerb}`, value: s.games.map(line).join('\n').slice(0, 1024) }] : [])];
+    e.thumbnail = { url: `${process.env.URL}/blue-dragons-logo.png` };
+  }
   if (!s.messageId) {
     const roles = await pingRoles(s.guildId, s.team).catch(() => []);
     body.content = roles.map((r) => `<@&${r.id}>`).join(' ');
     body.allowed_mentions = { roles: roles.map((r) => r.id) };
   }
-  const form = new FormData();
-  form.append('payload_json', JSON.stringify(body));
-  form.append('files[0]', new Blob([png], { type: 'image/png' }), imageName);
+  let reqBody, headers = auth();
+  if (png) {
+    reqBody = new FormData();
+    reqBody.append('payload_json', JSON.stringify(body));
+    reqBody.append('files[0]', new Blob([png], { type: 'image/png' }), imageName);
+  } else {
+    if (s.messageId) body.attachments = [];
+    reqBody = JSON.stringify(body);
+    headers = { ...headers, 'Content-Type': 'application/json' };
+  }
   const url = s.messageId ? `${API}/channels/${s.channelId}/messages/${s.messageId}` : `${API}/channels/${s.channelId}/messages`;
-  const res = await fetch(url, { method: s.messageId ? 'PATCH' : 'POST', headers: auth(), body: form });
+  const res = await fetch(url, { method: s.messageId ? 'PATCH' : 'POST', headers, body: reqBody });
   if (!res.ok) throw new Error(`Spielplan ${s.messageId ? 'aktualisieren' : 'posten'} fehlgeschlagen: ${res.status} ${await res.text()}`);
   if (!s.messageId) { s.messageId = (await res.json()).id; await st.setJSON(`sched-${id}`, s); }
   return s;
@@ -163,7 +179,7 @@ async function renderAndSend(id) {
 async function requestRender(id) {
   await store().setJSON(`schedjob-${id}`, { id, createdAt: Date.now() });
   try {
-    await fetch(`${process.env.URL}/.netlify/functions/lineup-worker`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-worker-secret': process.env.CRON_SECRET || '' }, body: JSON.stringify({ action: 'schedule', id }), signal: AbortSignal.timeout(1200) });
+    await fetch(`${process.env.URL}/.netlify/functions/lineup-worker`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-worker-secret': process.env.CRON_SECRET || '' }, body: JSON.stringify({ action: 'schedule', id }), signal: AbortSignal.timeout(800) });
   } catch { /* Timeout gewollt */ }
 }
 

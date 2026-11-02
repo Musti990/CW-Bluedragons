@@ -47,7 +47,8 @@ export const FORMATS = {
   32: { g: [4, 4, 4, 4, 4, 4, 4, 4], top: 2, ex: 0 },
 };
 /** Ligasystem: eine Tabelle, 4 Spieltage gegen zufällige Gegner; ab 12 Spielern Top 8 → Viertelfinale, sonst Top 4 → Halbfinale */
-export const leagueDef = (n) => ({ g: [n], top: n >= 12 ? 8 : 4, ex: 0, league: true, rounds: 4 });
+export const LEAGUE_MAX_ROUNDS = 4; // Liga: höchstens 4 Spieltage
+export const leagueDef = (n) => ({ g: [n], top: n >= 12 ? 8 : 4, ex: 0, league: true, rounds: Math.min(LEAGUE_MAX_ROUNDS, n - 1) });
 /** Standard ohne Auswahl: 12er und 20er als Liga, alles andere mit Gruppen */
 export const defaultMode = (n) => (n === 12 || n === 20 ? "liga" : "gruppen");
 /** Modus pro Cup: "auto" (Standard), "gruppen" oder "liga" */

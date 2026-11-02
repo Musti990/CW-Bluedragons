@@ -62,6 +62,7 @@ const COMMANDS = [
     options: [
       { type: 3, name: "name", description: "Name des Turniers", required: true, max_length: 60 },
       { type: 3, name: "anpfiff", description: "Anpfiff, z. B. 31.10.2026 20:00", required: true },
+      { type: 3, name: "modus", description: "Gruppenphase oder Liga (max. 4 Spieltage)", required: false, choices: [{ name: "Automatisch", value: "auto" }, { name: "Gruppenphase", value: "gruppen" }, { name: "Liga (max. 4 Spieltage)", value: "liga" }] },
     ],
   },
   { name: "ut-ergebnis", description: "Ergebnis deines Spiels melden" },
@@ -87,6 +88,7 @@ const COMMANDS = [
       { type: 1, name: "abbrechen", description: "Laufendes Turnier abbrechen und Rollen entfernen" },
       { type: 1, name: "testcup-start", description: "Test-Cup allein testen: du + Testspieler, ohne Statistik", options: [
         { type: 4, name: "teams", description: "Anzahl Spieler (8/16 = Gruppen, 12/20 = Ligasystem)", required: false, choices: [{ name: "8 Spieler (Gruppen → Halbfinale)", value: 8 }, { name: "12 Spieler (Liga → Viertelfinale)", value: 12 }, { name: "16 Spieler (Gruppen → Viertelfinale)", value: 16 }, { name: "20 Spieler (Liga → Viertelfinale)", value: 20 }] },
+        { type: 3, name: "modus", description: "Gruppenphase oder Liga (max. 4 Spieltage)", required: false, choices: [{ name: "Automatisch", value: "auto" }, { name: "Gruppenphase", value: "gruppen" }, { name: "Liga (max. 4 Spieltage)", value: "liga" }] },
       ] },
       { type: 1, name: "testcup-weiter", description: "Spiele zwischen Testspielern sofort ausspielen" },
       { type: 1, name: "rollen-check", description: "Prüfen, ob alle Cup-Teilnehmer die richtigen Gruppen-/KO-Rollen haben, und korrigieren" },

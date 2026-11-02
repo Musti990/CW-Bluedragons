@@ -170,6 +170,14 @@ export function adminPanel(t, cupMode = "auto") {
   };
 }
 
+export function modeRow(customId) {
+  return row({ type: 3, custom_id: customId, placeholder: "Modus wählen…", options: [
+    { label: "Gruppenphase", description: "Gruppen + K.-o.", value: "gruppen", emoji: { name: "⚽" } },
+    { label: "Liga (max. 4 Spieltage)", description: "Eine Tabelle · ab 12: Top 8, sonst Top 4", value: "liga", emoji: { name: "🏟️" } },
+    { label: "Automatisch", description: "12er/20er Liga, sonst Gruppen", value: "auto", emoji: { name: "🤖" } },
+  ] });
+}
+
 export function modePicker(cur) {
   return {
     content: "**🏟️ Modus wählen** – gilt für den aktuellen Cup (solange die Anmeldung offen ist) und für alle neuen Cups.",
