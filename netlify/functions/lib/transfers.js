@@ -68,17 +68,32 @@ function findChannels(channels) {
 
 function message(t, fileName) {
   const isIn = t.kind === 'in';
-  const n = `**${t.name}**`;
-  const lines = isIn
-    ? [`${n} wechselt${t.club ? ` von **${t.club}**` : ''} zu **CW BlueDragons**!`]
-    : [`${n} verlässt CW BlueDragons${t.club ? ` und wechselt zu **${t.club}**` : ''}.`, 'Danke für alles – alles Gute! 💙'];
-  const meta = [t.position ? `📍 Position: **${t.position}**` : '', t.number ? `🔢 **#${t.number}**` : ''].filter(Boolean).join(' · ');
-  if (meta) lines.push(meta);
-  if (t.info) lines.push(`📝 ${t.info}`);
+  const who = t.userId ? `<@${t.userId}>` : `**${t.name}**`;
+  let title, lines;
+  if (isIn) {
+    // Variante 1: „Here we go!“
+    title = '🚨🐉 HERE WE GO!';
+    const info = [t.club ? `Kommt von **${t.club}**` : '', t.position ? `Position: **${t.position}**` : ''].filter(Boolean).join(' · ');
+    lines = [
+      `**${t.name}** ➜ **CW BlueDragons** – deal done! ✅`,
+      ...(info ? [info] : []),
+      `Unterschrift ist trocken, Medizincheck bestanden, ${t.number ? `Trikot mit der **#${t.number}**` : 'Trikot'} liegt bereit. 🔵🟡`,
+      '',
+      `Willkommen in der Drachenhöhle, ${who}! 🔥`,
+    ];
+  } else {
+    // Variante 2: „Abschied mit Stil“
+    title = `👋 ES WAR UNS EINE EHRE, ${String(t.name).toUpperCase()}!`;
+    lines = [
+      t.club ? `Nach starker Zeit bei den BlueDragons geht es für dich weiter zu **${t.club}**.` : 'Nach starker Zeit bei den BlueDragons trennen sich unsere Wege.',
+      'Alles Gute auf deinem Weg – **einmal Drache, immer Drache.** 🐉💙',
+    ];
+  }
+  if (t.info) lines.push('', `📝 ${t.info}`);
   return {
-    content: isIn && t.userId ? `🐉 Willkommen bei den Drachen, <@${t.userId}>!` : '',
+    content: isIn && t.userId ? `<@${t.userId}>` : '',
     allowed_mentions: { users: isIn && t.userId ? [t.userId] : [] },
-    embeds: [{ color: isIn ? 0x2f7bff : 0xe5484d, title: `${isIn ? '✅ NEUZUGANG' : '❌ ABGANG'} · ${String(t.name).toUpperCase()}`, description: lines.join('\n'), image: { url: `attachment://${fileName}` }, footer: { text: 'CW BlueDragons · Transfers' }, timestamp: new Date().toISOString() }],
+    embeds: [{ color: isIn ? 0x2f7bff : 0xe5484d, title: title.slice(0, 256), description: lines.join('\n'), image: { url: `attachment://${fileName}` }, footer: { text: `CW BlueDragons · ${isIn ? 'Neuzugang' : 'Abgang'}` }, timestamp: new Date().toISOString() }],
     attachments: [{ id: 0, filename: fileName }],
   };
 }

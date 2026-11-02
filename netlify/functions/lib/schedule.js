@@ -102,22 +102,26 @@ async function scheduleImage(s) {
   return c.toBuffer('image/png');
 }
 
-/** Rollen für die Markierung: Team 1 → „Blue Dragons“ + „Dragons Tester“ · Late Night → „Late Night …“ */
-async function pingRoles(guildId, team) {
+/** Rollen für die Markierung (nie VM-/Head-VM-/Bot-Rollen)
+ *  Spielplan: die Spieler → „Dragons Spieler“ + „Dragons Tester“ (Late Night: „Late Night …“)
+ *  Aufstellung: „Blue Dragons“ + „Dragons Tester“ (Late Night: „Late Night …“)
+ *  Fest einstellbar: SCHEDULE_PING_ROLE_ID / LINEUP_PING_ROLE_ID (Team 1) bzw. …_2 (Late Night), IDs mit Komma */
+async function pingRoles(guildId, team, { kind = 'lineup' } = {}) {
   const res = await fetch(`${API}/guilds/${guildId}/roles`, { headers: auth() });
   const roles = res.ok ? await res.json() : [];
-  const ok = (r) => r && !r.managed;
-  const byIds = (env) => String(env || '').split(',').map((x) => x.trim()).filter(Boolean).map((id) => roles.find((r) => r.id === id)).filter(ok);
+  const ok = (r) => r && !r.managed && !/(^|[^a-z])vm([^a-z]|$)|headvm/.test(String(r.name || '').normalize('NFKC').toLowerCase()) && !norm(r.name).includes('vm');
+  const byIds = (env) => String(env || '').split(',').map((x) => x.trim()).filter(Boolean).map((id) => roles.find((r) => r.id === id)).filter(Boolean);
+  const find = (key, exact) => roles.find((r) => ok(r) && norm(r.name) === key) || (!exact && roles.find((r) => ok(r) && norm(r.name).includes(key)));
+  const envBase = kind === 'schedule' ? 'SCHEDULE_PING_ROLE_ID' : 'LINEUP_PING_ROLE_ID';
   if (String(team) === '2') {
-    const fixed = byIds(process.env.LINEUP_PING_ROLE_ID_2);
-    if (fixed.length) return fixed;
-    return [roles.find((r) => ok(r) && norm(r.name).includes('latenight'))].filter(Boolean);
+    const fixed = byIds(process.env[`${envBase}_2`]);
+    return fixed.length ? fixed : [find('latenight')].filter(Boolean);
   }
-  const fixed = byIds(process.env.LINEUP_PING_ROLE_ID);
+  const fixed = byIds(process.env[envBase]);
   if (fixed.length) return fixed;
-  const blue = roles.find((r) => ok(r) && norm(r.name) === 'bluedragons') || roles.find((r) => ok(r) && norm(r.name).includes('bluedragons'));
-  const tester = roles.find((r) => ok(r) && norm(r.name).includes('dragonstester'));
-  return [blue, tester].filter(Boolean);
+  const tester = find('dragonstester');
+  if (kind === 'schedule') return [find('dragonsspieler'), tester].filter(Boolean);
+  return [find('bluedragons', true) || find('bluedragons'), tester].filter(Boolean);
 }
 
 function payload(s, imageName) {
@@ -155,7 +159,7 @@ async function renderAndSend(id) {
     e.thumbnail = { url: `${process.env.URL}/blue-dragons-logo.png` };
   }
   if (!s.messageId) {
-    const roles = await pingRoles(s.guildId, s.team).catch(() => []);
+    const roles = await pingRoles(s.guildId, s.team, { kind: 'schedule' }).catch(() => []);
     body.content = roles.map((r) => `<@&${r.id}>`).join(' ');
     body.allowed_mentions = { roles: roles.map((r) => r.id) };
   }
