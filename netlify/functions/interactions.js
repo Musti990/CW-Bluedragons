@@ -472,12 +472,18 @@ async function handlePositionNickButton(interaction) {
 // label = Text auf Button und im Embed, style: 1 blau, 2 grau, 3 grün, 4 rot, row = Button-Reihe
 const GENERAL_ROLES = [
   { name: 'Aushilfe', label: 'Aushilfe', tag: 'Aushilfe', emoji: '🤝', style: 3, row: 0 },
-  { name: 'Tester', label: 'Tester', tag: 'Tester', emoji: '🧪', style: 1, row: 0 },
+  { name: 'Dragons Tester', label: 'Tester', tag: 'Tester', emoji: '🧪', style: 1, row: 0 }, // Rolle auf dem Server: „Dragons Tester“ – im Namen: „Name | Tester“
   { name: 'Late Night Spieler', label: 'Late Night', tag: null, emoji: '🌙', style: 2, row: 0 },
   { name: 'ProClubs Member', label: 'ProClubs Member', tag: null, emoji: '🎮', style: 1, row: 1 },
   { name: 'FUT Member', label: 'FUT Member', tag: null, emoji: '🃏', style: 1, row: 1 },
 ];
 const ROLE_TAGS = GENERAL_ROLES.map((r) => r.tag).filter(Boolean);
+// Tester-Rolle tolerant erkennen: „Dragons Tester“ (aktuell) oder „Tester“ (alt) – Schrift/Emojis egal
+const normRoleName = (n) => String(n || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
+const isTesterName = (n) => ['dragonstester', 'tester'].includes(normRoleName(n));
+const findTesterRole = (roles) => roles.find((r) => !r.managed && normRoleName(r.name) === 'dragonstester') || roles.find((r) => !r.managed && normRoleName(r.name) === 'tester');
+/** Welcher Namens-Zusatz gilt bei diesen Rollen? (Server-Namen tolerant vergleichen) */
+const tagWinner = (heldNames) => GENERAL_ROLES.find((g) => g.tag && [...heldNames].some((h) => normRoleName(h) === normRoleName(g.name) || (isTesterName(g.name) && isTesterName(h))));
 
 // Nickname zerlegen: "Musti | BD Spieler | HP:ZDM | NP: IV" -> { base, tag, HP, NP }
 function parseNick(nick) {
@@ -564,7 +570,7 @@ async function handleRoleButton(interaction) {
   const roles = await rolesRes.json();
   // Exakter Name, sonst tolerant (Emojis/Schrift/Leerzeichen egal) – nie die Bot-Rolle
   const normR = (n) => String(n || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const role = roles.find((r) => r.name === roleName) || roles.find((r) => !r.managed && normR(r.name) === normR(roleName));
+  const role = isTesterName(roleName) ? findTesterRole(roles) : (roles.find((r) => r.name === roleName) || roles.find((r) => !r.managed && normR(r.name) === normR(roleName)));
 
   if (!role) {
     return json(200, {
@@ -581,10 +587,10 @@ async function handleRoleButton(interaction) {
   // Tester gibt es nicht direkt: es öffnet sich ein Bewerbungs-Ticket (privater Kanal mit Infoblatt).
   // Der Klick ändert NICHTS am Namen. Erst beim „Annehmen“ im Ticket gibt es die Rolle Tester und den Namen „Name | Tester“.
   // Wer schon Tester ist: nichts ändern (weder Rolle noch Name) – Name ändert sich NUR beim Annehmen im Ticket
-  if (roleName === 'Tester' && hasRole) {
+  if (isTesterName(roleName) && hasRole) {
     return json(200, { type: 4, data: { content: '🧪 Du bist bereits **Tester**. (Entfernen kann nur ein Admin.)', flags: 64 } });
   }
-  if (roleName === 'Tester' && !hasRole) {
+  if (isTesterName(roleName) && !hasRole) {
     const t = await openTesterTicket(interaction, roles);
     if (t.error) return json(200, { type: 4, data: { content: `⚠️ ${t.error}`, flags: 64 } });
     return json(200, {
@@ -620,7 +626,7 @@ async function handleRoleButton(interaction) {
   if (hasRole) roleIdsAfter.delete(role.id);
   else roleIdsAfter.add(role.id);
   const heldNames = new Set(roles.filter((r) => roleIdsAfter.has(r.id)).map((r) => r.name));
-  const winner = GENERAL_ROLES.find((r) => r.tag && heldNames.has(r.name));
+  const winner = tagWinner(heldNames);
   const parsed = parseNick(interaction.member?.nick || interaction.member?.user?.global_name || interaction.member?.user?.username);
   parsed.tag = winner ? winner.tag : null;
   const newNick = buildNick(parsed);
@@ -1210,10 +1216,10 @@ async function handleTicketButton(interaction) {
   // accept: Tester-Rolle geben + Nickname-Zusatz
   const rolesRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/roles`, { headers: authHeader });
   const roles = rolesRes.ok ? await rolesRes.json() : [];
-  const role = roles.find((r) => r.name === 'Tester');
-  if (!role) return eph('⚠️ Es gibt keine Rolle **Tester** auf dem Server.');
+  const role = findTesterRole(roles);
+  if (!role) return eph('⚠️ Es gibt keine Rolle **Dragons Tester** auf dem Server.');
   const put = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${applicantId}/roles/${role.id}`, { method: 'PUT', headers: authHeader });
-  if (!put.ok) return eph('⚠️ Rolle konnte nicht vergeben werden. Die Bot-Rolle muss über **Tester** stehen.');
+  if (!put.ok) return eph('⚠️ Rolle konnte nicht vergeben werden. Die Bot-Rolle muss über **Dragons Tester** stehen.');
   // Willkommens-DM an den neuen Tester (Name ohne „| …“)
   let dmName = '';
   try { const mr = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${applicantId}`, { headers: authHeader }); if (mr.ok) { const mm = await mr.json(); dmName = String(mm.nick || mm.user?.global_name || mm.user?.username || '').split('|')[0].trim(); } } catch { /* ohne Namen */ }
@@ -1234,7 +1240,7 @@ async function handleTicketButton(interaction) {
     held.add(role.id);
     const heldNames = new Set(roles.filter((r) => held.has(r.id)).map((r) => r.name));
     // Name: Tester hat Vorrang → „Name | Tester“
-    const winner = GENERAL_ROLES.find((r) => r.name === 'Tester') || GENERAL_ROLES.find((r) => r.tag && heldNames.has(r.name));
+    const winner = GENERAL_ROLES.find((r) => isTesterName(r.name)) || tagWinner(heldNames);
     const parsed = parseNick(m.nick || m.user?.global_name || m.user?.username);
     parsed.tag = winner ? winner.tag : null;
     await setNick(guildId, applicantId, buildNick(parsed));
@@ -1553,7 +1559,7 @@ async function handlePanelAction(interaction) {
         { label: 'Alle', value: '-', emoji: { name: '👥' } },
         { label: KADER_TEAMS['1'].label, value: '1 Mannschaft', emoji: { name: '🐉' } },
         { label: KADER_TEAMS['2'].label, value: '2 Mannschaft', emoji: { name: '🌙' } },
-        { label: 'Tester', value: 'Tester', emoji: { name: '🧪' } },
+        { label: 'Dragons Tester', value: 'Dragons Tester', emoji: { name: '🧪' } },
       ] }] }],
     });
   }

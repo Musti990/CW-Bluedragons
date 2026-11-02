@@ -31,7 +31,7 @@ exports.handler = async () => {
           choices: [
             { name: '1. Mannschaft', value: '1 Mannschaft' },
             { name: '2. Mannschaft', value: '2 Mannschaft' },
-            { name: 'Tester', value: 'Tester' },
+            { name: 'Dragons Tester', value: 'Dragons Tester' },
           ],
         },
       ],

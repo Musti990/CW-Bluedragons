@@ -13,6 +13,7 @@ const COMMANDS = [
         { type: 5, name: "fehlende_erstellen", description: "Fehlende Kanäle automatisch anlegen (Standard: ja)" },
         { type: 5, name: "rechte_setzen", description: "Rechte der Kanäle automatisch setzen (Standard: ja)" },
       ] },
+      { type: 1, name: "ko-kanaele", description: "Kanäle für Achtel-, Viertel-, Halbfinale, Spiel um Platz 3 und Finale anlegen" },
       { type: 1, name: "schrift", description: "Alle UT-Cup-Kanäle in die fette Schrift umstellen (𝐁𝐞𝐢𝐬𝐩𝐢𝐞𝐥)" },
       { type: 1, name: "rechte", description: "Nur die Rechte aller verknüpften Kanäle neu setzen (Wochenplan bleibt unverändert)" },
       { type: 1, name: "kanal", description: "Einen Kanal verknüpfen", options: [

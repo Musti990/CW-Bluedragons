@@ -150,14 +150,14 @@ export function adminPanel(t, cupMode = "auto") {
         { name: "⚽ Turnier", value: "Anmeldeschluss · Check-in beenden · offene Spiele · Ergebnis festlegen · Ergebnis bearbeiten", inline: false },
         { name: "👤 Spieler", value: "Spieler abmelden · Profil löschen · Freilos hinzufügen/entfernen", inline: false },
         { name: "🗓️ Cup & Test", value: "Neuen Cup anlegen · **Modus wählen (Gruppenphase oder Ligasystem)** · Cup abbrechen · Test-Cup (8/12/16/20) · Testspiele ausspielen", inline: false },
-        { name: "⚙️ Einrichtung", value: "Panels aktualisieren · Rechte setzen · Rollen-Check · Status", inline: false },
+        { name: "⚙️ Einrichtung", value: "Panels aktualisieren · Rechte setzen · Rollen-Check · Status · 🧹 Kanäle säubern (Gruppen / K.-o.)", inline: false },
       ],
       thumbnail: { url: `${site()}/blue-dragons-logo.png` },
       footer: { text: "Aktualisiert sich bei jedem Klick · Slash-Befehle funktionieren weiterhin" },
     }],
     components: [
       row(btn("Anmeldeschluss", "adm:schluss", 1, { emoji: { name: "⏩" } }), btn("Check-in beenden", "adm:checkin", 1, { emoji: { name: "✅" } }), btn("Offene Spiele", "adm:spiele", 2, { emoji: { name: "📋" } }), btn("Ergebnis festlegen", "adm:ergebnis", 3, { emoji: { name: "✏️" } }), btn("Ergebnis bearbeiten", "adm:edit", 3, { emoji: { name: "🔧" } })),
-      row(btn("Spieler abmelden", "adm:abmelden", 2, { emoji: { name: "➖" } }), btn("Profil löschen", "adm:profil", 4, { emoji: { name: "🗑️" } }), btn("Freilos +", "adm:frei_add", 2, { emoji: { name: "🎟️" } }), btn("Freilos −", "adm:frei_rem", 2, { emoji: { name: "🎟️" } })),
+      row(btn("Spieler abmelden", "adm:abmelden", 2, { emoji: { name: "➖" } }), btn("Profil löschen", "adm:profil", 4, { emoji: { name: "🗑️" } }), btn("Freilos +", "adm:frei_add", 2, { emoji: { name: "🎟️" } }), btn("Freilos −", "adm:frei_rem", 2, { emoji: { name: "🎟️" } }), btn("Kanäle säubern", "adm:clean", 4, { emoji: { name: "🧹" } })),
       row(btn("Neuer Cup", "adm:neu", 3, { emoji: { name: "🆕" } }), btn("Modus: Gruppen/Liga", "adm:mode", 1, { emoji: { name: "🏟️" } }), btn("Cup abbrechen", "adm:abbrechen", 4, { emoji: { name: "🛑" } }), btn("Testspiele ausspielen", "adm:weiter", 2, { emoji: { name: "⏭️" } })),
       row({ type: 3, custom_id: "adm:testcup", placeholder: "🧪 Test-Cup starten …", options: [
         { label: "8 Spieler · Gruppen → Halbfinale", value: "8" },

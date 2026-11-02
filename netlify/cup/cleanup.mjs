@@ -10,7 +10,7 @@ export async function scheduleCleanup(t, delayMin = CLEANUP_DELAY_MIN) {
   const cfg = await getConfig();
   const c = cfg.channels || {};
   const channels = [
-    t.channelId, c.live, c.log, c.ko, c.kor,
+    t.channelId, c.live, c.log, c.ko, c.kor, c.af, c.vf, c.hf, c.p3, c.final,
     ...GROUP_NAMES.flatMap((g) => [c["g" + g], c["r" + g]]),
   ].filter(Boolean);
   const since = (t.createdAt || Date.now()) - 60 * 1000;

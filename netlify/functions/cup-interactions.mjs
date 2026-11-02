@@ -31,10 +31,15 @@ const isStaff = (i, cfg) => isAdmin(i, cfg) || hasRole(i, cfg.roles.moderator);
 const banText = (b) => `ist bis <t:${Math.floor(b.until / 1000)}:F> gesperrt (${["Eingecheckt, aber nicht erschienen","Während laufendem Turnierbetrieb rausgegangen","Gruppen- oder K.-o.-Phase ohne Abmeldung verlassen","Beleidigungen, Respektlosigkeit oder unsportliches Verhalten","Sonstiger schwerer Regelverstoß"][b.reason]})`;
 
 /** Längere Aktionen: Discord sofort antworten, im Hintergrund weiterarbeiten */
-function background(i, context, work, { update = false } = {}) {
+function background(i, context, work, { update = false, vanishMs = 0 } = {}) {
   const run = async () => { try { return await work(); } catch (e) { console.error(e); return `❌ ${e.message}`; } };
   if (typeof context?.waitUntil === "function") {
-    context.waitUntil(run().then(async (content) => { if (content) await editOriginal(i, typeof content === "string" ? { content, embeds: [], components: [] } : content); await processQueue(4000); }));
+    context.waitUntil(run().then(async (content) => {
+      if (content) await editOriginal(i, typeof content === "string" ? { content, embeds: [], components: [] } : content);
+      // Private Bestätigung nach kurzer Zeit wieder entfernen (damit nichts zugemüllt wird)
+      if (vanishMs && typeof content === "string" && content.startsWith("✅")) { await new Promise((r) => setTimeout(r, vanishMs)); await discord(`/webhooks/${i.application_id}/${i.token}/messages/@original`, "DELETE").catch(() => {}); }
+      await processQueue(4000);
+    }));
     return update ? { type: 6 } : { type: 5, data: { flags: 64 } };
   }
   return run().then((content) => (update ? { type: 7, data: typeof content === "string" ? { content, embeds: [], components: [] } : content } : eph(typeof content === "string" ? content : "", typeof content === "string" ? {} : content)));
@@ -107,6 +112,33 @@ async function adminPanelAction(i, context, cfg, act) {
         note = `Gilt auch für **${V.esc(t.name)}** (Anmeldung offen).`;
       } else if (t) note = "Der laufende Cup bleibt, wie er ausgelost wurde – gilt ab dem nächsten Cup.";
       return eph(`✅ Modus: **${MODE_NAME[mode]}**\n${note}`);
+    }
+    case "clean":
+      return eph("**🧹 Kanäle säubern** – welche? (Läuft gerade ein Cup, bleiben dessen aktuelle Nachrichten wie Check-in, Ergebnis-Panel und Grafiken stehen.)", { components: [{ type: 1, components: [{ type: 3, custom_id: "adm:clean_pick", placeholder: "Auswählen…", options: [
+        { label: "Gruppen-Kanäle (UT-Gruppe-A … H)", value: "g", emoji: { name: "⚽" } },
+        { label: "Gruppen-Ergebnisse (UT-A … H-Ergebnisse)", value: "r", emoji: { name: "📋" } },
+        { label: "K.-o.-Kanäle (KO, Ergebnisse, Achtel- bis Finale)", value: "ko", emoji: { name: "⚔️" } },
+        { label: "Alles (Gruppen + Ergebnisse + K.-o.)", value: "all", emoji: { name: "🧹" } },
+      ] }] }] });
+    case "clean_pick": {
+      const what = i.data.values?.[0] || "all";
+      const ch = cfg.channels || {};
+      const G = "ABCDEFGH".split("");
+      const list = [
+        ...(what === "g" || what === "all" ? G.map((g) => ch["g" + g]) : []),
+        ...(what === "r" || what === "all" ? G.map((g) => ch["r" + g]) : []),
+        ...(what === "ko" || what === "all" ? [ch.ko, ch.kor, ch.af, ch.vf, ch.hf, ch.p3, ch.final] : []),
+      ].filter(Boolean);
+      // Aktuelle Cup-Nachrichten behalten (alle IDs aus t.msgs)
+      const keep = [];
+      const walk = (o) => { if (!o) return; if (typeof o === "string" && /^\d{15,}$/.test(o)) keep.push(o); else if (typeof o === "object") Object.values(o).forEach(walk); };
+      if (t && !["fertig", "abgesagt", "geloescht"].includes(t.status)) walk(t.msgs);
+      return background(i, context, async () => {
+        const { purgeExcept } = await import("../cup/cleanup.mjs");
+        let n = 0;
+        for (const c of list) n += await purgeExcept(c, keep).catch(() => 0);
+        return `🧹 Fertig: **${n}** Nachrichten in **${list.length}** Kanälen gelöscht.${keep.length ? ` (${keep.length} aktuelle Cup-Nachrichten behalten)` : ""}`;
+      });
     }
     case "panels": return setup(asSetupCmd(i, "panels"), context, cfg);
     case "rechte": return setup(asSetupCmd(i, "rechte"), context, cfg);
@@ -227,6 +259,21 @@ async function setup(i, context, cfg) {
       await AS.processSetupJobs(14000);
       const pr = await AS.setupProgress();
       return `🔒 **Rechte für ${n} Kanäle werden gesetzt.**\n• Regelwerk, Registrieren, Tageskanäle usw.: für **alle** lesbar\n• Mein-Profil: nur Rolle **UT Spieler** · Gruppen- und KO-Kanäle: nur die jeweiligen Spieler (Turnierleitung sieht alles)\n${pr?.left ? `⏳ Noch ${pr.left} offen – läuft im Hintergrund weiter (ca. 1 Minute).` : "✅ Fertig."}\n-# Deine eigenen Kanäle (z. B. Community) stellst du am besten über die Kategorie ein.`;
+    });
+  }
+  if (sub.name === "ko-kanaele") {
+    return background(i, context, async () => {
+      const r = await AS.setupAll({ create: true, perms: true, only: AS.KO_CHANNEL_KEYS });
+      await AS.processSetupJobs(14000);
+      const name = (k) => CHANNEL_TYPES[k] || k;
+      const have = AS.KO_CHANNEL_KEYS.filter((k) => r.found[k]);
+      return [
+        "✅ **K.-o.-Kanäle werden eingerichtet**",
+        have.length ? `🔎 Schon vorhanden: ${have.map(name).join(", ")}` : "",
+        r.missing.length ? `🆕 Wird angelegt: ${r.missing.map((m) => name(m.key)).join(", ")}` : "🆕 Alle K.-o.-Kanäle gibt es schon.",
+        "🔒 Alle dürfen lesen, schreiben kann nur der Bot.",
+        "-# Ab jetzt landet jede Runde (Achtel-, Viertel-, Halbfinale, Platz 3, Finale) mit eigenem Bild in ihrem Kanal.",
+      ].filter(Boolean).join("\n");
     });
   }
   if (sub.name === "alles") {
@@ -591,8 +638,8 @@ async function component(i, context) {
       const { value: t, result } = await mutate(tKey(t0.channelId), (t) => { T.confirmPending(t, matchId, mine.club); return T.advance(t); });
       const m = t.matches.find((x) => x.id === matchId);
       await F.afterResult(t, m, result);
-      return `✅ Ergebnis bestätigt: ${V.matchLine(m, false)}`;
-    });
+      return `✅ Ergebnis bestätigt: ${V.matchLine(m, false)}\n-# Diese Nachricht siehst nur du – sie verschwindet gleich wieder.`;
+    }, { vanishMs: 9000 });
   }
   if (id === "res_pick") {
     const t = await resolveTournament(i);
@@ -713,8 +760,8 @@ async function modal(i, context) {
       if (result.state === "wartet") { await F.askOpponent(t, m, mine.club, h, a, pen); return "📨 Ergebnis eingetragen. Der Gegner hat 2 Minuten zum Bestätigen – danach gilt es automatisch.\n📸 Denk an den **Screenshot vom Endstand** hier im Kanal."; }
       if (result.state === "konflikt") { await F.notifyConflict(t, m); return "⚠️ Euer Ergebnis weicht vom Gegner ab. Die Turnierleitung wurde markiert und entscheidet."; }
       await F.afterResult(t, m, result.events);
-      return `✅ Ergebnis bestätigt: ${V.matchLine(m, false)}`;
-    });
+      return `✅ Ergebnis bestätigt: ${V.matchLine(m, false)}\n-# Diese Nachricht siehst nur du – sie verschwindet gleich wieder.`;
+    }, { vanishMs: 9000 });
   }
   return eph("Unbekanntes Formular.");
 }

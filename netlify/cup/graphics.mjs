@@ -45,117 +45,143 @@ function chip(x, X, Y, h, label) {
   return w;
 }
 
-/**
- * Tabelle (Gruppe oder Liga).
- * rows: [{ name, platform, sp, s, u, n, td, p, out }], qualify: wie viele gehen sicher weiter, maybe: wie viele auf „Wackelplatz“
- */
-export async function tableImage({ title, sub, info, label, rows, qualify = 2, maybe = 0 }) {
-  fonts();
-  const W = 1600, rowH = 62, head = 600, H = head + 70 + 56 + rows.length * rowH + 80;
-  const c = createCanvas(W, H), x = c.getContext("2d");
-  let y = await frame(x, W, H, title, sub);
-  y = Math.max(y, head - 20);
-  const X0 = 70, TW = W - 140;
-  // Rahmen
-  x.shadowColor = "rgba(47,139,255,.7)"; x.shadowBlur = 24; x.fillStyle = "rgba(3,8,24,.9)"; rr(x, X0, y, TW, 70 + 56 + rows.length * rowH + 8, 14); x.fill(); x.shadowBlur = 0;
-  x.strokeStyle = "rgba(160,190,255,.85)"; x.lineWidth = 2.5; x.stroke();
-  // Info-Zeile
-  x.textBaseline = "middle"; let lx = X0 + 30;
-  const leg = (col, t) => { x.fillStyle = col; x.fillRect(lx, y + 26, 8, 22); lx += 18; x.font = "500 23px Montserrat"; x.fillStyle = "#cfd8ee"; x.fillText(t, lx, y + 37); lx += x.measureText(t).width + 34; };
-  if (info) leg(BLUE, info);
-  if (maybe) leg("#f2c14e", "beste Dritte");
-  x.font = '40px "Bebas Neue"'; x.fillStyle = "#ffffff"; const lb = (label || "").toUpperCase(); x.fillText(lb, X0 + TW - 30 - x.measureText(lb).width, y + 38);
-  y += 70;
-  // Spaltenkopf
-  const cols = [["POS", 90], ["SPIELER", 520], ["SP", 110], ["S", 110], ["U", 110], ["N", 110], ["TD", 140], ["PKT", 150]];
-  const sc = TW / cols.reduce((a, b) => a + b[1], 0);
-  let cx = X0; const cxs = cols.map(([n, w]) => { const r = [cx, w * sc]; cx += w * sc; return r; });
-  x.fillStyle = "rgba(47,139,255,.22)"; x.fillRect(X0 + 2, y, TW - 4, 56);
-  x.font = "700 22px Montserrat"; x.fillStyle = ICE;
-  cols.forEach(([n], k) => { const [a, w] = cxs[k]; const tx = k === 1 ? a + 24 : a + (w - x.measureText(n).width) / 2; x.fillText(n, tx, y + 29); });
-  y += 56;
-  // Zeilen
-  rows.forEach((r, i) => {
-    const Y = y + i * rowH;
-    const q = !r.out && i < qualify, m = !r.out && !q && i < qualify + maybe;
-    x.fillStyle = i % 2 ? "rgba(255,255,255,.035)" : "rgba(255,255,255,.07)"; x.fillRect(X0 + 2, Y, TW - 4, rowH);
-    if (q || m) { x.fillStyle = q ? BLUE : "#f2c14e"; x.fillRect(X0 + 2, Y + 6, 6, rowH - 12); }
-    x.strokeStyle = "rgba(160,190,255,.15)"; x.lineWidth = 1; x.beginPath(); x.moveTo(X0 + 2, Y + rowH); x.lineTo(X0 + TW - 2, Y + rowH); x.stroke();
-    const mid = Y + rowH / 2 + 1;
-    x.textBaseline = "middle";
-    x.font = "500 30px Montserrat"; x.fillStyle = r.out ? "#6c7690" : "#dfe6f6";
-    const pos = String(i + 1); x.fillText(pos, cxs[0][0] + (cxs[0][1] - x.measureText(pos).width) / 2, mid);
-    // Name + Plattform
-    const [na, nw] = cxs[1];
-    let nx = na + 24;
-    if (r.platform && PF[r.platform]) nx += chip(x, nx, Y + rowH / 2 - 15, 30, PF[r.platform]) + 14;
-    fit(x, r.name, '{s}px "Bebas Neue"', 40, na + nw - nx - 10, 20);
-    x.textBaseline = "middle";
-    x.fillStyle = r.out ? "#6c7690" : "#ffffff"; x.fillText(r.name, nx, mid + 2);
-    const vals = [r.sp, r.s, r.u, r.n, (r.td > 0 ? "+" : "") + r.td, r.p];
-    vals.forEach((v, k) => {
-      const [a, w] = cxs[k + 2]; const t = String(v);
-      x.font = k === 5 ? '44px "Bebas Neue"' : '40px "Bebas Neue"';
-      x.fillStyle = r.out ? "#6c7690" : k === 5 ? "#ffffff" : "#dfe6f6";
-      x.fillText(t, a + (w - x.measureText(t).width) / 2, mid + 2);
-    });
-  });
-  // Rahmenlinien zwischen Spalten
-  x.strokeStyle = "rgba(160,190,255,.18)"; x.lineWidth = 1;
-  cxs.slice(1).forEach(([a]) => { x.beginPath(); x.moveTo(a, y - 56); x.lineTo(a, y + rows.length * rowH); x.stroke(); });
-  return c.toBuffer("image/png");
+// ================= Arena-Look (CW Community World) =================
+const ARENA_BLUE = "#1e90ff", ARENA_ICE = "#8fd3ff";
+const metal = (x, y0, y1) => { const g = x.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, "#d6e6ff"); g.addColorStop(1, "#4f8fff"); return g; };
+function hexBox(x, X, Y, w, h, fill, stroke, lw = 2.5) { const k = h * 0.35; x.beginPath(); x.moveTo(X + k, Y); x.lineTo(X + w - k, Y); x.lineTo(X + w, Y + h / 2); x.lineTo(X + w - k, Y + h); x.lineTo(X + k, Y + h); x.lineTo(X, Y + h / 2); x.closePath(); x.fillStyle = fill; x.fill(); x.strokeStyle = stroke; x.lineWidth = lw; x.shadowColor = stroke; x.shadowBlur = 14; x.stroke(); x.shadowBlur = 0; }
+const fitFont = (x, t, font, size, max, min = 14) => { let s = size; do { x.font = font.replace("{s}", s); s--; } while (x.measureText(t).width > max && s > min); };
+
+/** Hintergrund (Rauch, Scheinwerfer, Boden) + Titel. Gibt y unter dem Untertitel zurück. */
+async function arenaFrame(x, W, H, title, sub, top) {
+  const dir = assetDir();
+  const bg = await loadImage(path.join(dir, "cw-arena-bg.png"));
+  // oben: Scheinwerfer, unten: Boden – Mitte wird gestreckt
+  const s = W / bg.width, topH = 330 * s, botH = 410 * s;
+  // Mitte zuerst (gestreckt), dann Kopf und Boden mit weichem Übergang darüber
+  x.drawImage(bg, 0, 250, bg.width, bg.height - 250 - 330, 0, topH - 80 * s, W, Math.max(1, H - topH - botH + 160 * s));
+  const soft = (sy, sh, dy, dh, fadeTop) => {
+    const o = createCanvas(Math.ceil(W), Math.ceil(dh)), ox = o.getContext("2d");
+    ox.drawImage(bg, 0, sy, bg.width, sh, 0, 0, W, dh);
+    const g = ox.createLinearGradient(0, 0, 0, dh);
+    if (fadeTop) { g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(0.3, "rgba(0,0,0,1)"); g.addColorStop(1, "rgba(0,0,0,1)"); }
+    else { g.addColorStop(0, "rgba(0,0,0,1)"); g.addColorStop(0.72, "rgba(0,0,0,1)"); g.addColorStop(1, "rgba(0,0,0,0)"); }
+    ox.globalCompositeOperation = "destination-in"; ox.fillStyle = g; ox.fillRect(0, 0, W, dh);
+    x.drawImage(o, 0, dy);
+  };
+  soft(0, 330, 0, topH, false);
+  soft(bg.height - 410, 410, H - botH, botH, true);
+  x.textAlign = "center"; x.textBaseline = "middle";
+  const T = title.toUpperCase();
+  fitFont(x, T, "{s}px 'Bebas Neue'", Math.round(W * 0.12), W * 0.86);
+  const fs = parseInt(x.font, 10);
+  x.fillStyle = metal(x, top - fs / 2, top + fs / 2); x.shadowColor = ARENA_BLUE; x.shadowBlur = 35; x.fillText(T, W / 2, top); x.shadowBlur = 0;
+  let y = top + fs / 2 + 8;
+  if (sub) { fitFont(x, sub.toUpperCase(), "700 {s}px Montserrat", Math.round(W * 0.018), W * 0.86, 12); x.fillStyle = "#e6f0ff"; x.fillText(sub.toUpperCase(), W / 2, y + 14); y += 38; }
+  return y;
+}
+
+/** Unten mittig: „PRESENTED BY“ + CW-Logo */
+async function presentedBy(x, W, yCenter, size) {
+  const logo = await loadImage(path.join(assetDir(), "cw-round.png"));
+  x.font = `700 ${Math.round(size * 0.19)}px Montserrat`; x.textBaseline = "middle"; x.textAlign = "right";
+  const lx = W / 2 - size / 2 + size * 0.35;
+  x.fillStyle = "rgba(200,225,255,.85)"; x.fillText("PRESENTED BY", lx - size * 0.18, yCenter);
+  x.shadowColor = ARENA_BLUE; x.shadowBlur = 30; x.drawImage(logo, lx, yCenter - size / 2, size, size); x.shadowBlur = 0;
+  x.textAlign = "center";
+}
+const FOOT = 330; // Platz unten für „Presented by“
+
+function chipAt(x, t, X, yMid, align) {
+  x.font = "700 13px Montserrat"; const w = x.measureText(t).width + 18; const cx = align === "l" ? X : X - w;
+  x.strokeStyle = ARENA_BLUE; x.lineWidth = 1.5; x.beginPath(); x.roundRect(cx, yMid - 13, w, 26, 6); x.stroke();
+  x.fillStyle = ARENA_ICE; x.textAlign = "center"; x.fillText(t, cx + w / 2, yMid + 1); return w;
 }
 
 /**
- * Runden-Übersicht (Spieltag oder K.-o.-Runde), Hochformat.
- * matches: [{ home, away, hp, ap, h, a, pen }] – h/a = Tore oder null
+ * LIVE-TABELLE (Gruppe oder Liga).
+ * rows: [{ name, platform, sp, s, u, n, td, p, out }]
  */
-export async function roundImage({ title, sub, matches }) {
+export async function tableImage({ title = "Live-Tabelle", sub, info, label, rows, qualify = 2, maybe = 0 }) {
   fonts();
-  const W = 1080, rowH = 86, gap = 14, head = 380;
-  const H = head + matches.length * (rowH + gap) + 80;
+  const W = 1219, rh = 66, top = 300;
+  const Y0 = top + 90 + 38 + 78;
+  const H = Y0 + 48 + rows.length * rh + 14 + FOOT;
   const c = createCanvas(W, H), x = c.getContext("2d");
-  let y = await frame(x, W, H, title, sub);
-  y = Math.max(y + 10, head - 30);
-  const bw = 400, sw = 150, X1 = (W - (bw * 2 + sw + 40)) / 2, Xs = X1 + bw + 20, X2 = Xs + sw + 20;
-  const box = (X, Y, w, h, left, win) => {
-    const sk = 22;
-    x.beginPath();
-    if (left) { x.moveTo(X + sk, Y); x.lineTo(X + w, Y); x.lineTo(X + w - sk * 0.6, Y + h / 2); x.lineTo(X + w, Y + h); x.lineTo(X + sk, Y + h); x.lineTo(X, Y + h / 2); }
-    else { x.moveTo(X, Y); x.lineTo(X + w - sk, Y); x.lineTo(X + w, Y + h / 2); x.lineTo(X + w - sk, Y + h); x.lineTo(X, Y + h); x.lineTo(X + sk * 0.6, Y + h / 2); }
-    x.closePath();
-    const g = x.createLinearGradient(0, Y, 0, Y + h); g.addColorStop(0, "rgba(14,28,70,.95)"); g.addColorStop(1, "rgba(3,8,24,.95)");
-    x.fillStyle = g; x.fill(); x.lineWidth = win ? 3 : 2; x.strokeStyle = win ? "#ffffff" : "rgba(120,170,255,.85)";
-    x.shadowColor = win ? "rgba(47,139,255,1)" : "transparent"; x.shadowBlur = win ? 14 : 0; x.stroke(); x.shadowBlur = 0;
-  };
-  matches.forEach((m, i) => {
-    const Y = y + i * (rowH + gap), mid = Y + rowH / 2 + 1;
-    const done = m.h != null && m.a != null;
-    const hw = done && (m.h > m.a || (m.h === m.a && m.pen && m.pen[0] > m.pen[1]));
-    const aw = done && !hw && !(m.h === m.a && !m.pen);
-    box(X1, Y, bw, rowH, true, hw); box(X2, Y, bw, rowH, false, aw);
-    // Ergebnisfeld
-    x.beginPath(); x.moveTo(Xs + 18, Y + 8); x.lineTo(Xs + sw - 18, Y + 8); x.lineTo(Xs + sw, mid); x.lineTo(Xs + sw - 18, Y + rowH - 8); x.lineTo(Xs + 18, Y + rowH - 8); x.lineTo(Xs, mid); x.closePath();
-    x.fillStyle = "rgba(3,8,24,.95)"; x.fill(); x.strokeStyle = "rgba(200,215,240,.9)"; x.lineWidth = 2; x.stroke();
-    x.textBaseline = "middle";
-    if (done) {
-      const t = `${m.h}:${m.a}`; x.font = m.pen ? '44px "Bebas Neue"' : '54px "Bebas Neue"'; x.fillStyle = "#ffffff";
-      x.fillText(t, Xs + (sw - x.measureText(t).width) / 2, m.pen ? mid - 7 : mid + 3);
-      if (m.pen) { const p = `i.E. ${m.pen[0]}:${m.pen[1]}`; x.font = "700 15px Montserrat"; x.fillStyle = ICE; x.fillText(p, Xs + (sw - x.measureText(p).width) / 2, mid + 22); }
-    } else { x.font = '34px "Bebas Neue"'; x.fillStyle = "rgba(170,190,230,.6)"; const t = "VS"; x.fillText(t, Xs + (sw - x.measureText(t).width) / 2, mid + 2); }
-    // Namen + Plattform
-    const nameAt = (name, pf, X, left, win, lose) => {
-      const chipW = pf && PF[pf] ? (x.font = "600 13px Montserrat", x.measureText(PF[pf]).width + 13) : 0;
-      fit(x, name, '{s}px "Bebas Neue"', 40, bw - 80 - chipW, 18);
-      const nw = x.measureText(name).width;
-      x.fillStyle = lose ? "#7f8aa6" : "#ffffff";
-      const tx = left ? X + bw - 40 - nw : X + 40;
-      x.fillText(name, tx, mid + 2);
-      if (chipW) { chip(x, left ? X + 28 : X + bw - 28 - chipW, Y + rowH / 2 - 13, 26, PF[pf]); x.textBaseline = "middle"; }
-    };
-    nameAt(m.home, m.hp, X1, true, hw, done && aw);
-    nameAt(m.away, m.ap, X2, false, aw, done && hw);
-    x.textBaseline = "top";
+  let y = await arenaFrame(x, W, H, title, sub || "CW Community World · Ultimate Team Cup", top);
+  hexBox(x, 90, y + 10, 360, 48, "rgba(4,12,36,.88)", ARENA_BLUE); x.font = "34px 'Bebas Neue'"; x.fillStyle = "#e8eefb"; x.fillText(String(label || "").toUpperCase(), 270, y + 35);
+  hexBox(x, 466, y + 10, 666, 48, "rgba(4,12,36,.88)", ARENA_BLUE); fitFont(x, info || "", "600 {s}px Montserrat", 19, 600, 12); x.fillStyle = "#cfe0ff"; x.fillText(info || "", 799, y + 35);
+  const X0 = 84, TW = W - 168, T0 = Y0;
+  x.fillStyle = "rgba(3,9,28,.88)"; x.beginPath(); x.roundRect(X0, T0, TW, 48 + rows.length * rh + 14, 14); x.fill(); x.strokeStyle = ARENA_BLUE; x.lineWidth = 3; x.shadowColor = ARENA_BLUE; x.shadowBlur = 22; x.stroke(); x.shadowBlur = 0;
+  const cols = [["POS", 70], ["SPIELER", 340], ["SPIELE", 95], ["SIEGE", 95], ["UNENTSCH.", 110], ["NIEDERL.", 110], ["TORDIFF.", 110], ["PUNKTE", 110]];
+  const sc = (TW - 16) / cols.reduce((a, b) => a + b[1], 0); let cx = X0 + 8; const xs = cols.map(([, w]) => { const r = [cx, w * sc]; cx += w * sc; return r; });
+  x.fillStyle = "rgba(30,144,255,.22)"; x.fillRect(X0 + 8, T0 + 8, TW - 16, 40);
+  x.font = "700 15px Montserrat"; x.fillStyle = ARENA_ICE; x.textAlign = "center"; x.textBaseline = "middle"; cols.forEach(([n], k) => x.fillText(n, xs[k][0] + xs[k][1] / 2, T0 + 29));
+  rows.forEach((r, i) => {
+    const yy = T0 + 54 + i * rh, mid = yy + (rh - 6) / 2;
+    const q = !r.out && i < qualify, m = !r.out && !q && i < qualify + maybe;
+    x.fillStyle = i % 2 ? "rgba(255,255,255,.03)" : "rgba(255,255,255,.07)"; x.fillRect(X0 + 8, yy, TW - 16, rh - 6);
+    if (q || m) { x.fillStyle = q ? ARENA_BLUE : "#f2c14e"; x.fillRect(X0 + 8, yy + 5, 5, rh - 16); }
+    const col = r.out ? "#6c7690" : "#fff";
+    x.textAlign = "center"; x.font = "40px 'Bebas Neue'"; x.fillStyle = col; x.fillText(String(i + 1), xs[0][0] + xs[0][1] / 2, mid + 2);
+    let nx = xs[1][0] + 14;
+    if (r.platform && PF[r.platform]) nx += chipAt(x, PF[r.platform], nx, mid, "l") + 12;
+    x.textAlign = "left"; fitFont(x, String(r.name).toUpperCase(), "{s}px 'Bebas Neue'", 40, xs[1][0] + xs[1][1] - nx - 8, 20); x.fillStyle = col; x.fillText(String(r.name).toUpperCase(), nx, mid + 3);
+    x.textAlign = "center";
+    [r.sp, r.s, r.u, r.n, (r.td > 0 ? "+" : "") + r.td, r.p].forEach((v, k) => { x.font = "40px 'Bebas Neue'"; x.fillStyle = col; x.fillText(String(v), xs[k + 2][0] + xs[k + 2][1] / 2, mid + 3); });
   });
+  x.strokeStyle = "rgba(160,190,255,.2)"; x.lineWidth = 1; xs.slice(1).forEach(([a]) => { x.beginPath(); x.moveTo(a, T0 + 8); x.lineTo(a, T0 + 48 + rows.length * rh); x.stroke(); });
+  await presentedBy(x, W, H - FOOT / 2 + 20, 170);
+  return c.toBuffer("image/png");
+}
+
+/** Ein Spiel als Zeile (Name | Ergebnis-Kasten | Name) */
+function matchRow(x, W, y, rowH, m) {
+  x.fillStyle = "rgba(3,9,28,.88)"; x.strokeStyle = "rgba(120,180,255,.7)"; x.lineWidth = 2; x.beginPath(); x.roundRect(50, y, W - 100, rowH, 10); x.fill(); x.stroke();
+  const mid = y + rowH / 2;
+  const wl = m.hp && PF[m.hp] ? chipAt(x, PF[m.hp], 68, mid, "l") : 0, wr = m.ap && PF[m.ap] ? chipAt(x, PF[m.ap], W - 68, mid, "r") : 0;
+  const done = m.h != null && m.a != null;
+  const win = !done ? 0 : m.h > m.a || (m.h === m.a && m.pen && m.pen[0] > m.pen[1]) ? 1 : m.h < m.a || (m.h === m.a && m.pen && m.pen[0] < m.pen[1]) ? 2 : 0;
+  const max = W / 2 - 110 - Math.max(wl, wr) - 30;
+  x.textAlign = "left"; fitFont(x, String(m.home).toUpperCase(), "{s}px 'Bebas Neue'", 40, max, 18); x.fillStyle = win === 2 ? "#7f8aa6" : "#fff"; x.fillText(String(m.home).toUpperCase(), 68 + (wl ? wl + 14 : 0), mid + 3);
+  x.textAlign = "right"; fitFont(x, String(m.away).toUpperCase(), "{s}px 'Bebas Neue'", 40, max, 18); x.fillStyle = win === 1 ? "#7f8aa6" : "#fff"; x.fillText(String(m.away).toUpperCase(), W - 68 - (wr ? wr + 14 : 0), mid + 3);
+  hexBox(x, W / 2 - 75, y + 9, 150, rowH - 18, "#020a22", done ? ARENA_ICE : "rgba(120,180,255,.6)", 2.5);
+  x.textAlign = "center"; x.strokeStyle = "rgba(160,190,255,.6)"; x.lineWidth = 1.5; x.beginPath(); x.moveTo(W / 2, y + 20); x.lineTo(W / 2, y + rowH - 20); x.stroke();
+  if (done) {
+    x.font = "46px 'Bebas Neue'"; x.fillStyle = "#fff"; x.fillText(String(m.h), W / 2 - 28, mid + 3); x.fillText(String(m.a), W / 2 + 28, mid + 3);
+    if (m.pen) { x.font = "700 12px Montserrat"; x.fillStyle = ARENA_ICE; x.fillText(`${m.pen[0]}:${m.pen[1]} i.E.`, W / 2, y + rowH - 4); }
+  }
+}
+
+/** GRUPPENPHASE / LIGAPHASE: alle Spieltage einer Gruppe untereinander */
+export async function groupPhaseImage({ title = "Gruppenphase", sub, label, days }) {
+  fonts();
+  const W = 1080, rowH = 78, top = 175;
+  const body = days.reduce((a, d) => a + 70 + d.matches.length * (rowH + 12) + 8, 0);
+  const H = 370 + body + FOOT;
+  const c = createCanvas(W, H), x = c.getContext("2d");
+  const y0 = await arenaFrame(x, W, H, title, sub || "CW Community World · Ultimate Team Cup", top);
+  hexBox(x, 140, y0 + 8, W - 280, 70, "rgba(4,12,36,.9)", ARENA_BLUE, 3); x.font = "54px 'Bebas Neue'"; x.fillStyle = "#e8eefb"; x.textAlign = "center"; x.fillText(String(label || "").toUpperCase(), W / 2, y0 + 45);
+  let y = Math.max(370, y0 + 100);
+  for (const d of days) {
+    x.strokeStyle = ARENA_BLUE; x.lineWidth = 2.5; x.beginPath(); x.moveTo(40, y + 26); x.lineTo(W - 40, y + 26); x.stroke();
+    hexBox(x, W / 2 - 150, y, 300, 52, "#081a48", ARENA_ICE, 2.5); x.font = "42px 'Bebas Neue'"; x.fillStyle = "#fff"; x.textAlign = "center"; x.fillText(`SPIELTAG ${d.round}`, W / 2, y + 28);
+    y += 70;
+    for (const m of d.matches) { matchRow(x, W, y, rowH, m); y += rowH + 12; }
+    y += 8;
+  }
+  await presentedBy(x, W, H - FOOT / 2 + 20, 170);
+  return c.toBuffer("image/png");
+}
+
+/** K.-o.-Runde / Finale / Spiel um Platz 3 */
+export async function roundImage({ title, sub, matches, big = false }) {
+  fonts();
+  const W = 1080, rowH = big ? 110 : 82, top = 175;
+  const H = 300 + matches.length * (rowH + 14) + 40 + FOOT;
+  const c = createCanvas(W, H), x = c.getContext("2d");
+  const y0 = await arenaFrame(x, W, H, title, sub || "CW Community World · Ultimate Team Cup", top);
+  let y = Math.max(300, y0 + 30);
+  for (const m of matches) { matchRow(x, W, y, rowH, m); y += rowH + 14; }
+  await presentedBy(x, W, H - FOOT / 2 + 20, 170);
   return c.toBuffer("image/png");
 }

@@ -48,6 +48,11 @@ const PLAN = [
     { key: "r" + g, name: "📋・" + fancy("UT-" + g + "-Ergebnisse"), cat: "groups", prof: "groupres:" + g },
   ]),
   { key: "ko", name: "⚔️・" + fancy("UT-KO-Phase"), cat: "ko", prof: "ko" },
+  { key: "af", name: "🔥・" + fancy("UT-Achtelfinale"), cat: "ko", prof: "public" },
+  { key: "vf", name: "⚡・" + fancy("UT-Viertelfinale"), cat: "ko", prof: "public" },
+  { key: "hf", name: "💥・" + fancy("UT-Halbfinale"), cat: "ko", prof: "public" },
+  { key: "p3", name: "🥉・" + fancy("UT-Spiel-um-Platz-3"), cat: "ko", prof: "public" },
+  { key: "final", name: "🏆・" + fancy("UT-Finale"), cat: "ko", prof: "public" },
   { key: "kor", name: "📋・" + fancy("UT-KO-Ergebnisse"), cat: "ko", prof: "kores" },
   { key: "admin", name: "⚙️・" + fancy("UT-Admin"), cat: "ko", prof: "admins" },
 ];
@@ -65,8 +70,9 @@ export function detectKey(rawName) {
   if (n.includes("kophase")) return "ko";
   const day = DAYS.findIndex((d) => n === d.toLowerCase());
   if (day >= 0) return "day" + (day + 1);
-  const map = [["adminpanel", "panel"], ["turnierchat", "chat"], ["anmeldung", "signup"], ["benachrichtigung", "notify"], ["regelwerk", "rules"], ["registrieren", "reg"], ["meinprofil", "team"], ["spieleruebersicht", "over"], ["livespielplan", "live"], ["halloffame", "hof"], ["trophaeen", "trophy"], ["sperrliste", "ban"], ["turnierleitung", "log"]];
+  const map = [["achtelfinale", "af"], ["viertelfinale", "vf"], ["halbfinale", "hf"], ["spielumplatz3", "p3"], ["adminpanel", "panel"], ["turnierchat", "chat"], ["anmeldung", "signup"], ["benachrichtigung", "notify"], ["regelwerk", "rules"], ["registrieren", "reg"], ["meinprofil", "team"], ["spieleruebersicht", "over"], ["livespielplan", "live"], ["halloffame", "hof"], ["trophaeen", "trophy"], ["sperrliste", "ban"], ["turnierleitung", "log"]];
   for (const [kw, key] of map) if (n.includes(kw)) return key;
+  if (n === "finale") return "final";
   if (n === "regeln") return "rules";
   if (n === "admin") return "admin";
   return null;
@@ -111,7 +117,9 @@ export async function setupRoles() {
 }
 
 /** Hauptfunktion: plant alles und stellt die Aufträge in die Warteschlange */
-export async function setupAll({ create = true, perms = true, kickoff = "20:00" } = {}) {
+export const KO_CHANNEL_KEYS = ["af", "vf", "hf", "p3", "final"];
+
+export async function setupAll({ create = true, perms = true, kickoff = "20:00", only = null } = {}) {
   const roles = await setupRoles();
   const all = (await discord(`/guilds/${G()}/channels`)) || [];
   const text = all.filter((c) => c.type === 0 || c.type === 5);
@@ -125,7 +133,8 @@ export async function setupAll({ create = true, perms = true, kickoff = "20:00" 
   }, { initial: { channels: {}, roles: {} } });
 
   const jobs = [];
-  const missing = PLAN.filter((p) => !found[p.key]);
+  const plan = only ? PLAN.filter((p) => only.includes(p.key)) : PLAN;
+  const missing = plan.filter((p) => !found[p.key]);
   if (create && missing.length) {
     const cats = all.filter((c) => c.type === 4);
     for (const catKey of [...new Set(missing.map((m) => m.cat))]) {
@@ -134,11 +143,10 @@ export async function setupAll({ create = true, perms = true, kickoff = "20:00" 
     }
     for (const m of missing) jobs.push({ k: "chan", key: m.key, name: m.name, cat: m.cat, prof: m.prof, day: m.day });
   }
-  if (perms) for (const p of PLAN) if (found[p.key]) jobs.push({ k: "perm", ch: found[p.key], prof: p.prof });
+  if (perms) for (const p of plan) if (found[p.key]) jobs.push({ k: "perm", ch: found[p.key], prof: p.prof });
   // Wochenplan für gefundene Tageskanäle
   const ko = parseTime(kickoff) || "20:00";
-  for (const p of PLAN.filter((x) => x.day && found[x.key])) jobs.push({ k: "zeit", day: p.day, ch: found[p.key], kickoff: ko });
-  jobs.push({ k: "panels" });
+  if (!only) { for (const p of PLAN.filter((x) => x.day && found[x.key])) jobs.push({ k: "zeit", day: p.day, ch: found[p.key], kickoff: ko }); jobs.push({ k: "panels" }); }
   await mutate("setupjobs", (q) => { q.list = jobs; q.kickoff = ko; q.cats = {}; q.done = 0; q.total = jobs.length; }, { initial: {} });
   return { roles, found, missing: create ? missing : [], perms, total: jobs.length };
 }

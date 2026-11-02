@@ -268,8 +268,10 @@ export async function refreshGroupGraphic(t, gName, { fresh: isNew = false, cont
     const d = (await import("./data.mjs")).fmtDef(t.fmt, t.mode) || { top: 2, ex: 0 };
     const rows = T.standings(t, gName).map((r) => ({ name: r.id, platform: pf(r.id), sp: r.sp, s: r.s, u: r.u, n: r.n, td: r.t - r.gt, p: r.p, out: t.out.includes(r.id) }));
     const files = [];
-    if (ms.length) files.push({ name: `spieltag-${gName}-${round}.png`, buffer: await G.roundImage({ title: `${label} · Spieltag ${round}`, sub: t.name, matches: ms.map((m) => ({ ...gfxRow(m), hp: pf(m.home), ap: pf(m.away) })) }) });
-    files.push({ name: `tabelle-${gName}.png`, buffer: await G.tableImage({ title: t.league ? "Liga · Tabelle" : `Gruppe ${gName}`, sub: t.name, label: t.league ? "Ligasystem" : `Gruppe ${gName}`, info: t.league ? `K.-o.-Phase: Top ${d.top} → ${T.koRoundName({ koSize: (await import("./data.mjs")).koSizeFor(t.fmt, t.mode) }, 1)}` : `K.-o.-Phase: Platz 1${d.top > 1 ? " + 2" : ""}`, rows, qualify: d.top, maybe: d.ex ? 1 : 0 }) });
+    const allMs = t.matches.filter((m) => m.phase === "gruppe" && m.group === gName);
+    const days = [...new Set(allMs.map((m) => m.round))].sort((a, b) => a - b).map((r) => ({ round: r, matches: allMs.filter((m) => m.round === r).map((m) => ({ ...gfxRow(m), hp: pf(m.home), ap: pf(m.away) })) }));
+    if (days.length) files.push({ name: `gruppenphase-${gName}.png`, buffer: await G.groupPhaseImage({ title: t.league ? "Ligaphase" : "Gruppenphase", sub: t.name, label: t.league ? "Liga" : `Gruppe ${gName}`, days }) });
+    files.push({ name: `live-tabelle-${gName}.png`, buffer: await G.tableImage({ title: "Live-Tabelle", sub: t.name, label: t.league ? "Liga" : `Gruppe ${gName}`, info: t.league ? `K.-o.-Phase: Top ${d.top} → ${T.koRoundName({ koSize: (await import("./data.mjs")).koSizeFor(t.fmt, t.mode) }, 1)}` : `K.-o.-Phase: Platz 1${d.top > 1 ? " + 2" : ""}`, rows, qualify: d.top, maybe: d.ex ? 1 : 0 }) });
     const cur = (await get(tKey(t.channelId)))?.msgs?.gfx?.[gName];
     const payload = { content: content || `📊 **${label} · Spieltag ${round}**`, ...(roles.length ? { allowed_mentions: { roles } } : {}) };
     // Beim Aktualisieren den Text nicht ändern (sonst würde erneut markiert)
@@ -293,13 +295,26 @@ export async function refreshKOGraphic(t, { fresh: isNew = false } = {}) {
     const clubs = await getClubs();
     const pf = (c) => clubs[c]?.platform || null;
     const isFinal = ms.some((m) => m.final);
-    const title = isFinal ? (ms.some((m) => m.p3) ? "Finale & Platz 3" : "Finale") : T.koRoundName(t, round);
     const G = await import("./graphics.mjs");
-    const img = await G.roundImage({ title, sub: t.name, matches: ms.map((m) => ({ ...gfxRow(m), hp: pf(m.home), ap: pf(m.away) })) });
-    const cur = (await get(tKey(t.channelId)))?.msgs?.gfxKo;
-    let id = cur?.id && cur.round === round && !isNew ? cur.id : null;
-    const res = await sendFiles(cfg.channels.ko, { content: `📊 **${title}**` }, [{ name: `ko-runde-${round}.png`, buffer: img }], id);
-    if (!id && res?.id) await mutate(tKey(t.channelId), (x) => { x.msgs = x.msgs || {}; x.msgs.gfxKo = { id: res.id, round }; });
+    const row = (m) => ({ ...gfxRow(m), hp: pf(m.home), ap: pf(m.away) });
+    const post = async (key, ch, title, list, fileName, big) => {
+      if (!list.length || !ch) return;
+      const img = await G.roundImage({ title, sub: t.name, matches: list.map(row), big });
+      const cur = (await get(tKey(t.channelId)))?.msgs?.[key];
+      const id = cur?.id && cur.round === round && !isNew ? cur.id : null;
+      const res = await sendFiles(ch, id ? {} : { content: `📊 **${title}**` }, [{ name: fileName, buffer: img }], id);
+      if (!id && res?.id) await mutate(tKey(t.channelId), (x) => { x.msgs = x.msgs || {}; x.msgs[key] = { id: res.id, round }; });
+    };
+    if (isFinal) {
+      // Eigene Kanäle: 🏆 Finale und 🥉 Spiel um Platz 3 (ohne Kanal → K.-o.-Kanal)
+      await post("gfxFinal", cfg.channels.final || cfg.channels.ko, "Finale", ms.filter((m) => !m.p3), "finale.png", true);
+      await post("gfxP3", cfg.channels.p3 || cfg.channels.ko, "Spiel um Platz 3", ms.filter((m) => m.p3), "spiel-um-platz-3.png", true);
+    } else {
+      // Achtel-, Viertel-, Halbfinale: eigener Kanal (ohne Kanal → K.-o.-Kanal)
+      const rn = T.koRoundName(t, round);
+      const key = { Achtelfinale: "af", Viertelfinale: "vf", Halbfinale: "hf" }[rn];
+      await post("gfxKo", (key && cfg.channels[key]) || cfg.channels.ko, rn, ms, `ko-runde-${round}.png`, false);
+    }
   } catch (e) { console.error("KO-Grafik:", e?.message || e); }
 }
 
@@ -390,10 +405,14 @@ export async function refreshBracket(t) {
 }
 
 // ---------- Ergebnisse ----------
+// Ergebnis-Bestätigung sieht nur, wer bestätigt (kurz, als private Antwort) – keine Nachricht mehr im Kanal
 export async function afterResult(t, m, events, byAdmin = false) {
   const cfg = await getConfig();
+  await afterResultWork(t, m, events, cfg);
+}
+
+async function afterResultWork(t, m, events, cfg) {
   const ch = resultChannelOf(cfg, m);
-  if (ch) await sendMessage(ch, V.resultConfirmed(m, byAdmin));
   await closeAsk(t, m, m.auto ? "auto" : "bestaetigt");
   if (m.phase === "gruppe") await refreshGroupPlan(t, m.group); else { await refreshBracket(t); if (!events?.length) await refreshKOResultPanel(t); }
   // Grafik des gerade gespielten Spieltags/der Runde mit dem neuen Ergebnis aktualisieren
