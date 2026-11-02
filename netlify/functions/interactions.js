@@ -977,7 +977,7 @@ async function handleLineupComponent(interaction) {
   }
 
   if (action === 'clear') {
-    return luUpd(await applyAndRefresh({ ...lineup, players: {} }, '🧹 Alle Positionen geleert.'));
+    return luUpd(await applyAndRefresh({ ...lineup, players: {}, ids: {} }, '🧹 Alle Positionen geleert.'));
   }
 
   // 📤 Posten: Kanal wählen → Uhrzeit/Datum/Info eintragen → Bild wird in den Kanal gepostet
@@ -1016,8 +1016,8 @@ async function handleLineupComponent(interaction) {
 
   const slotKey = parts[3];
   if (action === 'unset') {
-    const next = { ...lineup, players: { ...lineup.players } };
-    delete next.players[slotKey];
+    const next = { ...lineup, players: { ...lineup.players }, ids: { ...(lineup.ids || {}) } };
+    delete next.players[slotKey]; delete next.ids[slotKey];
     return luUpd(await applyAndRefresh(next, `**${slotKey}** geleert.`));
   }
 
@@ -1028,7 +1028,7 @@ async function handleLineupComponent(interaction) {
     const user = resolved.users?.[userId];
     const rawNick = member?.nick || user?.global_name || user?.username || 'Spieler';
     const name = String(rawNick).split('|')[0].trim() || rawNick;
-    const next = { ...lineup, players: { ...lineup.players, [slotKey]: name } };
+    const next = { ...lineup, players: { ...lineup.players, [slotKey]: name }, ids: { ...(lineup.ids || {}), [slotKey]: userId } };
     return luUpd(await applyAndRefresh(next, `**${slotKey}:** ${name}`));
   }
 
@@ -1048,12 +1048,34 @@ async function handleLineupComponent(interaction) {
 
 // ---------- Veröffentlichte Aufstellung: Spieler ersetzen ----------
 async function handleLineupPub(interaction) {
-  if (!(await isKaderAdmin(interaction))) return luEph('⛔ Nur Admins können Spieler ersetzen.');
-  const parts = interaction.data.custom_id.split(':'); // lineup:<pubrep|pubslot|pubnew|pubmodal>:<pubId>[:slot]
+  const parts = interaction.data.custom_id.split(':'); // lineup:<pubrep|pubslot|pubnew|pubmodal|pubyes|pubno>:<pubId>[:slot]
   const [, act, pubId, slotKey] = parts;
   const store = lineupStore();
   const pub = await store.get(`pub-${pubId}`, { type: 'json' });
   if (!pub) return luEph('Diese Aufstellung ist zu alt – bitte neu posten.');
+
+  // ✅ Bin dabei / ❌ Kann nicht – für die eingesetzten Spieler selbst
+  if (act === 'pubyes' || act === 'pubno') {
+    const uid = interaction.member?.user?.id;
+    const slot = Object.entries(pub.ids || {}).find(([, u]) => u === uid)?.[0];
+    if (!slot) return luEph('Du stehst nicht in dieser Aufstellung.');
+    const R = require('./lib/lineup-render');
+    if (act === 'pubyes') {
+      pub.confirm = { ...(pub.confirm || {}), [uid]: 'yes' };
+      await store.setJSON(`pub-${pubId}`, pub);
+      await R.updatePublishedText(pub).catch(() => {});
+      return luEph('✅ Danke, du bist bestätigt! Viel Erfolg 🐉');
+    }
+    const name = String(pub.players[slot] || '').split('|')[0].trim();
+    const label = (require('./lib/matchreport-svg').FORMATIONS[pub.formation] || []).find((x) => x.key === slot)?.label || slot;
+    delete pub.players[slot]; delete pub.ids[slot]; if (pub.confirm) delete pub.confirm[uid];
+    pub.changes = [...(pub.changes || []), `${label}: ~~${name}~~ → **frei** (kann nicht)`];
+    await store.setJSON(`pub-${pubId}`, pub);
+    await requestLineupRepublish(pubId);
+    return luEph(`❌ Okay, du bist aus der Aufstellung raus (**${label}** ist jetzt frei). Die Admins können die Position neu besetzen.`);
+  }
+
+  if (!(await isKaderAdmin(interaction))) return luEph('⛔ Nur Admins können Spieler ersetzen.');
   const slots = (require('./lib/matchreport-svg').FORMATIONS[pub.formation] || []);
   const label = (k) => slots.find((x) => x.key === k)?.label || k;
 
@@ -1090,6 +1112,14 @@ async function handleLineupPub(interaction) {
 
   const old = pub.players[slotKey] || '— frei —';
   if (newName) pub.players[slotKey] = newName; else delete pub.players[slotKey];
+  // Discord-ID des neuen Spielers (für Bestätigen); Aushilfe/leer = keine
+  pub.ids = pub.ids || {};
+  delete pub.ids[slotKey];
+  if (newName && act === 'pubnew') {
+    const { players } = await getKaderPlayers(interaction.guild_id, pub.team).catch(() => ({ players: [] }));
+    const p = players.find((x) => String(x.name).split('|')[0].trim() === String(newName).split('|')[0].trim());
+    if (p) pub.ids[slotKey] = p.id;
+  }
   pub.changes = pub.changes || [];
   pub.changes.push(`${label(slotKey)}: ~~${String(old).split('|')[0].trim()}~~ → **${newName ? String(newName).split('|')[0].trim() : 'frei'}**`);
   await store.setJSON(`pub-${pubId}`, pub);
@@ -1120,7 +1150,8 @@ async function handleLineupModal(interaction) {
   const name = interaction.data.components?.[0]?.components?.[0]?.value?.trim();
   const { store, key, lineup } = await loadLineupForEdit(interaction);
   if (!lineup) return luEph('Diese Aufstellung ist abgelaufen. Starte sie neu mit /aufstellung.');
-  const next = { ...lineup, players: { ...lineup.players, [slotKey]: name } };
+  const next = { ...lineup, players: { ...lineup.players, [slotKey]: name }, ids: { ...(lineup.ids || {}) } };
+  delete next.ids[slotKey]; // Aushilfe: kein Discord-Konto
   next.guildId = interaction.guild_id;
   await saveLineup(store, key, next);
   await requestLineupRefresh({ action: 'refresh', key });

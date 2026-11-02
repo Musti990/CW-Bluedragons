@@ -55,13 +55,14 @@ async function autoFill(guildId, lineup) {
   const slots = FORMATIONS[lineup.formation];
   const used = new Set();
   const result = {};
+  const ids = {};
   // bereits von Hand gesetzte Spieler behalten und nicht erneut vergeben
   for (const s of slots) {
     const name = lineup.players[s.key];
     if (name) {
       result[s.key] = name;
       const p = pool.find((x) => x.name === name);
-      if (p) used.add(p.id);
+      if (p) { used.add(p.id); ids[s.key] = p.id; } else if (lineup.ids?.[s.key]) ids[s.key] = lineup.ids[s.key];
     }
   }
 
@@ -71,6 +72,7 @@ async function autoFill(guildId, lineup) {
     const p = pool.find((x) => !used.has(x.id) && pred(x, slot));
     if (p) {
       result[slot.key] = p.name;
+      ids[slot.key] = p.id;
       used.add(p.id);
     }
   };
@@ -78,7 +80,7 @@ async function autoFill(guildId, lineup) {
   slots.forEach(take((x, slot) => SLOT_GROUP((x.pos || '').toUpperCase()) === SLOT_GROUP(slot.label)));
   slots.forEach(take(() => true));
 
-  return { ...lineup, players: result };
+  return { ...lineup, players: result, ids };
 }
 
 // ---------- Discord-UI ----------

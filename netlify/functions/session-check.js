@@ -125,6 +125,14 @@ exports.handler = async () => {
     results.push({ aufstellung: 'Fehler: ' + err.message });
   }
 
+  // Aufstellung: 30 Min. vorher erinnern, 5 Min. später Unbestätigte entfernen
+  try {
+    const c = await require('./lib/lineup-render').processConfirmations();
+    if (c.length) results.push({ bestaetigung: c });
+  } catch (err) {
+    results.push({ bestaetigung: 'Fehler: ' + err.message });
+  }
+
   // Spielpläne: liegengebliebene Bild-Aufträge nachholen
   try {
     const sp = await require('./lib/schedule').processPendingSchedules();
