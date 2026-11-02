@@ -47,11 +47,16 @@ const PLAN = [
     { key: "g" + g, name: "⚽・" + fancy("UT-Gruppe-" + g), cat: "groups", prof: "group:" + g },
     { key: "r" + g, name: "📋・" + fancy("UT-" + g + "-Ergebnisse"), cat: "groups", prof: "groupres:" + g },
   ]),
-  { key: "af", name: "🔥・" + fancy("UT-Achtelfinale"), cat: "ko", prof: "koround" },
-  { key: "vf", name: "⚡・" + fancy("UT-Viertelfinale"), cat: "ko", prof: "koround" },
-  { key: "hf", name: "💥・" + fancy("UT-Halbfinale"), cat: "ko", prof: "koround" },
-  { key: "p3", name: "🥉・" + fancy("UT-Spiel-um-Platz-3"), cat: "ko", prof: "koround" },
-  { key: "final", name: "🏆・" + fancy("UT-Finale"), cat: "ko", prof: "koround" },
+  { key: "af", name: "🔥・" + fancy("UT-Achtelfinale"), cat: "ko", prof: "public" },
+  { key: "vf", name: "⚡・" + fancy("UT-Viertelfinale"), cat: "ko", prof: "public" },
+  { key: "hf", name: "💥・" + fancy("UT-Halbfinale"), cat: "ko", prof: "public" },
+  { key: "p3", name: "🥉・" + fancy("UT-Spiel-um-Platz-3"), cat: "ko", prof: "public" },
+  { key: "final", name: "🏆・" + fancy("UT-Finale"), cat: "ko", prof: "public" },
+  { key: "afr", name: "📋・" + fancy("UT-Achtelfinale-Ergebnisse"), cat: "ko", prof: "koround" },
+  { key: "vfr", name: "📋・" + fancy("UT-Viertelfinale-Ergebnisse"), cat: "ko", prof: "koround" },
+  { key: "hfr", name: "📋・" + fancy("UT-Halbfinale-Ergebnisse"), cat: "ko", prof: "koround" },
+  { key: "p3r", name: "📋・" + fancy("UT-Platz-3-Ergebnisse"), cat: "ko", prof: "koround" },
+  { key: "finalr", name: "📋・" + fancy("UT-Finale-Ergebnisse"), cat: "ko", prof: "koround" },
   { key: "admin", name: "⚙️・" + fancy("UT-Admin"), cat: "ko", prof: "admins" },
 ];
 const CATS = { info: "🐉 UT CUP · INFO", cup: "🏆 ULTIMATE TEAM CUP", groups: "⚽ UT GRUPPEN", ko: "⚔️ UT K.-O.-PHASE" };
@@ -68,7 +73,7 @@ export function detectKey(rawName) {
   if (n.includes("kophase")) return "ko";
   const day = DAYS.findIndex((d) => n === d.toLowerCase());
   if (day >= 0) return "day" + (day + 1);
-  const map = [["achtelfinale", "af"], ["viertelfinale", "vf"], ["halbfinale", "hf"], ["spielumplatz3", "p3"], ["adminpanel", "panel"], ["turnierchat", "chat"], ["anmeldung", "signup"], ["benachrichtigung", "notify"], ["regelwerk", "rules"], ["registrieren", "reg"], ["meinprofil", "team"], ["spieleruebersicht", "over"], ["livespielplan", "live"], ["halloffame", "hof"], ["trophaeen", "trophy"], ["sperrliste", "ban"], ["turnierleitung", "log"]];
+  const map = [["achtelfinaleergebnisse", "afr"], ["viertelfinaleergebnisse", "vfr"], ["halbfinaleergebnisse", "hfr"], ["platz3ergebnisse", "p3r"], ["finaleergebnisse", "finalr"], ["achtelfinale", "af"], ["viertelfinale", "vf"], ["halbfinale", "hf"], ["spielumplatz3", "p3"], ["adminpanel", "panel"], ["turnierchat", "chat"], ["anmeldung", "signup"], ["benachrichtigung", "notify"], ["regelwerk", "rules"], ["registrieren", "reg"], ["meinprofil", "team"], ["spieleruebersicht", "over"], ["livespielplan", "live"], ["halloffame", "hof"], ["trophaeen", "trophy"], ["sperrliste", "ban"], ["turnierleitung", "log"]];
   for (const [kw, key] of map) if (n.includes(kw)) return key;
   if (n === "finale") return "final";
   if (n === "regeln") return "rules";
@@ -117,7 +122,7 @@ export async function setupRoles() {
 }
 
 /** Hauptfunktion: plant alles und stellt die Aufträge in die Warteschlange */
-export const KO_CHANNEL_KEYS = ["af", "vf", "hf", "p3", "final"];
+export const KO_CHANNEL_KEYS = ["af", "vf", "hf", "p3", "final", "afr", "vfr", "hfr", "p3r", "finalr"];
 
 /** Alte Kanäle „UT-KO-Phase“ und „UT-KO-Ergebnisse“ löschen (werden nicht mehr gebraucht) */
 export async function removeOldKoChannels() {

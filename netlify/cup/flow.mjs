@@ -303,7 +303,8 @@ export async function refreshKOGraphic(t, { fresh: isNew = false } = {}) {
       const cur = (await get(tKey(t.channelId)))?.msgs?.[key];
       const id = cur?.id && cur.round === round && !isNew ? cur.id : null;
       const role = cfg.roles.rounds?.[title === "Spiel um Platz 3" ? "Spiel um Platz 3" : title];
-      const line = `${role ? `<@&${role}> ` : ""}🟢 **${title}** – ihr dürft spielen! Ergebnis unten über **Ergebnis eintragen**.`;
+      const resCh = cfg.channels[({ Finale: "final", "Spiel um Platz 3": "p3" }[title] || koKeyOf(t, list[0])) + "r"];
+      const line = `${role ? `<@&${role}> ` : ""}🟢 **${title}** – ihr dürft spielen! Ergebnis eintragen in ${resCh ? `<#${resCh}>` : "**Ergebnis eintragen** unten"}.`;
       const res = await sendFiles(ch, id ? {} : { content: line, allowed_mentions: { roles: role ? [role] : [] } }, [{ name: fileName, buffer: img }], id);
       if (!id && res?.id) await mutate(tKey(t.channelId), (x) => { x.msgs = x.msgs || {}; x.msgs[key] = { id: res.id, round }; });
     };
@@ -354,7 +355,9 @@ export function koKeyOf(t, m) {
   return { Sechzehntelfinale: "af", Achtelfinale: "af", Viertelfinale: "vf", Halbfinale: "hf" }[T.koRoundName(t, m.round)] || "af";
 }
 export const koChannelOf = (cfg, t, m) => cfg.channels[koKeyOf(t, m)] || cfg.channels.kor || cfg.channels.ko;
-export const resultChannelOf = (cfg, m, t) => (m.phase === "gruppe" ? cfg.channels["r" + m.group] || cfg.channels["g" + m.group] : t ? koChannelOf(cfg, t, m) : cfg.channels.kor || cfg.channels.ko);
+/** Ergebnis-Kanal der Runde (z. B. „UT-Viertelfinale-Ergebnisse“), sonst der Runden-Kanal */
+export const koResultChannelOf = (cfg, t, m) => cfg.channels[koKeyOf(t, m) + "r"] || koChannelOf(cfg, t, m);
+export const resultChannelOf = (cfg, m, t) => (m.phase === "gruppe" ? cfg.channels["r" + m.group] || cfg.channels["g" + m.group] : t ? koResultChannelOf(cfg, t, m) : cfg.channels.kor || cfg.channels.ko);
 
 /** Ergebnis-Panel im KO-Ergebniskanal: pro Runde neu posten (damit es unten steht), sonst aktualisieren */
 export async function refreshKOResultPanel(t, fresh = false) {
@@ -363,7 +366,7 @@ export async function refreshKOResultPanel(t, fresh = false) {
   const cur = t.status === "ko" ? T.currentMatches(t) : [];
   const keys = [...new Set(cur.map((m) => koKeyOf(t, m)))];
   for (const key of keys) {
-    const ch = cfg.channels[key] || cfg.channels.kor;
+    const ch = cfg.channels[key + "r"] || cfg.channels[key] || cfg.channels.kor;
     if (!ch) continue;
     const view = V.koResultPanel(t, (m) => koKeyOf(t, m) === key);
     const old = t.msgs?.koResBy?.[key];

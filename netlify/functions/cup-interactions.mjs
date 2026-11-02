@@ -127,7 +127,7 @@ async function adminPanelAction(i, context, cfg, act) {
       const list = [
         ...(what === "g" || what === "all" ? G.map((g) => ch["g" + g]) : []),
         ...(what === "r" || what === "all" ? G.map((g) => ch["r" + g]) : []),
-        ...(what === "ko" || what === "all" ? [ch.ko, ch.kor, ch.af, ch.vf, ch.hf, ch.p3, ch.final] : []),
+        ...(what === "ko" || what === "all" ? [ch.af, ch.vf, ch.hf, ch.p3, ch.final, ch.afr, ch.vfr, ch.hfr, ch.p3r, ch.finalr] : []),
       ].filter(Boolean);
       // Aktuelle Cup-Nachrichten behalten (alle IDs aus t.msgs)
       const keep = [];
@@ -273,8 +273,8 @@ async function setup(i, context, cfg) {
         have.length ? `🔎 Schon vorhanden: ${have.map(name).join(", ")}` : "",
         r.missing.length ? `🆕 Wird angelegt: ${r.missing.map((m) => name(m.key)).join(", ")}` : "🆕 Alle K.-o.-Kanäle gibt es schon.",
         removed.length ? `🗑️ Gelöscht (nicht mehr nötig): ${removed.join(", ")}` : "",
-        "🔒 Alle dürfen lesen · Spieler der K.-o.-Phase dürfen dort Screenshots posten.",
-        "-# Jede Runde hat jetzt alles in ihrem Kanal: Markierung, Bild und „Ergebnis eintragen“.",
+        "🔒 Alle dürfen lesen · in den Ergebnis-Kanälen dürfen die Spieler der K.-o.-Phase Screenshots posten.",
+        "-# Pro Runde: Runden-Kanal (Markierung + Bild) und Ergebnis-Kanal (Ergebnis eintragen + Screenshots).",
       ].filter(Boolean).join("\n");
     });
   }
