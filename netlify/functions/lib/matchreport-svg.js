@@ -730,6 +730,15 @@ const FORMATIONS = {
     { key: 'ZDMR', label: 'ZDM', x: 0.64, y: 0.46 }, { key: 'RM', label: 'RM', x: 0.88, y: 0.52 }, { key: 'ZOM', label: 'ZOM', x: 0.5, y: 0.62 },
     { key: 'LS', label: 'LS', x: 0.38, y: 0.84 }, { key: 'RS', label: 'RS', x: 0.62, y: 0.84 },
   ],
+  // 3-5-2 Variante 2: ohne ZOM – 3 IV, 1 ZDM, 2 ZM, LM, RM, 2 ST
+  '3-5-2 (2)': [
+    { key: 'TW', label: 'TW', x: 0.5, y: 0.07 },
+    { key: 'LIV', label: 'LIV', x: 0.27, y: 0.25 }, { key: 'ZIV', label: 'ZIV', x: 0.5, y: 0.22 }, { key: 'RIV', label: 'RIV', x: 0.73, y: 0.25 },
+    { key: 'ZDM', label: 'ZDM', x: 0.5, y: 0.42 },
+    { key: 'LM', label: 'LM', x: 0.12, y: 0.56 }, { key: 'ZML', label: 'ZM', x: 0.36, y: 0.56 },
+    { key: 'ZMR', label: 'ZM', x: 0.64, y: 0.56 }, { key: 'RM', label: 'RM', x: 0.88, y: 0.56 },
+    { key: 'STL', label: 'ST', x: 0.38, y: 0.82 }, { key: 'STR', label: 'ST', x: 0.62, y: 0.82 },
+  ],
   '4-2-3-1': [
     { key: 'TW', label: 'TW', x: 0.5, y: 0.07 },
     { key: 'LV', label: 'LV', x: 0.15, y: 0.27 }, { key: 'IVL', label: 'IV', x: 0.385, y: 0.23 },
