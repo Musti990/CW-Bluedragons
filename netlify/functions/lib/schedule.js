@@ -57,7 +57,7 @@ async function scheduleImage(s) {
   const logo = await loadImage(path.join(dir, 'bd-logo-hd.png')); const lh = 200, lw = lh * logo.width / logo.height;
   x.shadowColor = blue; x.shadowBlur = 40; x.drawImage(logo, W / 2 - lw / 2, 30, lw, lh); x.shadowBlur = 0;
   x.textBaseline = 'top'; x.textAlign = 'center';
-  x.font = '700 24px Montserrat'; x.fillStyle = gold; x.fillText(String(s.teamLabel || '').toUpperCase(), W / 2, 242);
+  x.font = '700 24px Montserrat'; x.fillStyle = gold; x.fillText(String(s.team) === '2' ? 'CW BLUEDRAGONS · LATE NIGHT' : 'CW BLUEDRAGONS', W / 2, 242);
   const tg = x.createLinearGradient(0, 270, 0, 380); tg.addColorStop(0, '#fff'); tg.addColorStop(.6, '#cfd8e6'); tg.addColorStop(1, '#8a97ad');
   x.font = "118px 'Bebas Neue'"; x.fillStyle = tg; x.shadowColor = blue; x.shadowBlur = 22; x.fillText('SPIELPLAN', W / 2, 268); x.shadowBlur = 0;
   const pill = (cx, label, val) => { x.font = '700 24px Montserrat'; const w = Math.max(x.measureText(val).width, 120) + 70; const X = cx - w / 2, Y = 392; x.fillStyle = 'rgba(10,22,60,.9)'; x.strokeStyle = 'rgba(160,190,255,.7)'; x.lineWidth = 2; x.beginPath(); x.roundRect(X, Y, w, 60, 14); x.fill(); x.stroke(); x.font = '700 15px Montserrat'; x.fillStyle = gold; x.fillText(label, cx, Y + 8); x.font = '700 24px Montserrat'; x.fillStyle = '#fff'; x.fillText(val, cx, Y + 27); };
@@ -104,7 +104,7 @@ async function scheduleImage(s) {
 
 /** Rollen für die Markierung (nie VM-/Head-VM-/Bot-Rollen)
  *  Spielplan: die Spieler → „Dragons Spieler“ + „Dragons Tester“ (Late Night: „Late Night …“)
- *  Aufstellung: „Blue Dragons“ + „Dragons Tester“ (Late Night: „Late Night …“)
+ *  Aufstellung: ebenso „Dragons Spieler“ + „Dragons Tester“
  *  Fest einstellbar: SCHEDULE_PING_ROLE_ID / LINEUP_PING_ROLE_ID (Team 1) bzw. …_2 (Late Night), IDs mit Komma */
 async function pingRoles(guildId, team, { kind = 'lineup' } = {}) {
   const res = await fetch(`${API}/guilds/${guildId}/roles`, { headers: auth() });
@@ -120,8 +120,8 @@ async function pingRoles(guildId, team, { kind = 'lineup' } = {}) {
   const fixed = byIds(process.env[envBase]);
   if (fixed.length) return fixed;
   const tester = find('dragonstester');
-  if (kind === 'schedule') return [find('dragonsspieler'), tester].filter(Boolean);
-  return [find('bluedragons', true) || find('bluedragons'), tester].filter(Boolean);
+  // Spielplan und Aufstellung: die Spieler → „Dragons Spieler“ + „Dragons Tester“
+  return [find('dragonsspieler'), tester].filter(Boolean);
 }
 
 function payload(s, imageName) {
@@ -129,7 +129,7 @@ function payload(s, imageName) {
   const lines = [`👤 Treffen **${s.treffen} Uhr**${s.kick ? ` (<t:${s.kick}:R>)` : ''}`];
   if (s.lastChange) lines.push(`**🔄 Aktualisiert:** ${s.lastChange}`);
   return {
-    embeds: [{ color: 0x1f6bff, title: `🗓️ SPIELPLAN · ${weekday(s.datum)} ${s.datum}`.trim(), description: lines.join('\n'), image: { url: `attachment://${imageName}` }, footer: { text: `${s.teamLabel} · ${all.length} ${all.length === 1 ? 'Spiel' : 'Spiele'}` } }],
+    embeds: [{ color: 0x1f6bff, title: `🗓️ SPIELPLAN · ${weekday(s.datum)} ${s.datum}`.trim(), description: lines.join('\n'), image: { url: `attachment://${imageName}` }, footer: { text: `${String(s.team) === '2' ? 'CW BlueDragons · Late Night' : 'CW BlueDragons'} · ${all.length} ${all.length === 1 ? 'Spiel' : 'Spiele'}` } }],
     components: [{ type: 1, components: [
       { type: 2, style: 3, label: 'Freundschaftsspiel hinzufügen', emoji: { name: '➕' }, custom_id: `sched:add:${s.id}` },
       { type: 2, style: 1, label: 'Ergebnis eintragen', emoji: { name: '📝' }, custom_id: `sched:res:${s.id}` },

@@ -60,32 +60,54 @@ function slug(name) {
 function ticketMessage(userId) {
   const sheet = '```\n' + INFO_FIELDS.map((f) => `${f.label}:`).join('\n') + '\n```';
   return {
-    content: `<@${userId}>`,
+    content: `<@${userId}> 👋 **WICHTIG:** Du kannst hier **nicht schreiben** – klick unten auf den blauen Button **📋 Infoblatt ausfüllen**!`,
     allowed_mentions: { users: [userId] },
     embeds: [
       {
-        title: '🧪 TESTER-BEWERBUNG',
-        description: `Willkommen! Klick unten auf **📋 Infoblatt ausfüllen** und füll beide Teile aus.\nEin Admin schaut es sich an und meldet sich.\n\n**Abgefragt wird:**\n${sheet}`,
+        title: '🧪 TESTER-BEWERBUNG · CW BLUEDRAGONS',
+        description: '⚠️ **Ohne ausgefülltes Infoblatt wird deine Bewerbung NICHT bearbeitet.**',
         color: 0x1f6bff,
         thumbnail: { url: `${process.env.URL || ''}/blue-dragons-logo.png` },
+        fields: [
+          { name: '📌 SO GEHT’S', value: '**1️⃣** Klick unten auf **📋 Infoblatt ausfüllen** (blauer Button)\n**2️⃣** Füll **Teil 1** aus und klick auf **Absenden**\n**3️⃣** Klick danach auf **Teil 2** und füll auch den aus\n**4️⃣** Fertig ✅ – ein Admin meldet sich bei dir' },
+          { name: '📝 Abgefragt wird', value: sheet },
+        ],
         footer: { text: 'United by Blue Fire 🐉 · Annehmen/Ablehnen nur für Admins' },
       },
     ],
     components: [
       {
         type: 1,
-        components: [{ type: 2, style: 1, label: 'Infoblatt ausfüllen', emoji: { name: '📋' }, custom_id: `ticket:form1:${userId}` }],
+        components: [{ type: 2, style: 1, label: 'Infoblatt ausfüllen – HIER KLICKEN', emoji: { name: '📋' }, custom_id: `ticket:form1:${userId}` }],
       },
       {
         type: 1,
         components: [
-          { type: 2, style: 3, label: 'Annehmen', emoji: { name: '✅' }, custom_id: `ticket:accept:${userId}` },
-          { type: 2, style: 4, label: 'Ablehnen', emoji: { name: '❌' }, custom_id: `ticket:reject:${userId}` },
+          { type: 2, style: 3, label: 'Annehmen (Admin)', emoji: { name: '✅' }, custom_id: `ticket:accept:${userId}` },
+          { type: 2, style: 4, label: 'Ablehnen (Admin)', emoji: { name: '❌' }, custom_id: `ticket:reject:${userId}` },
           { type: 2, style: 2, label: 'Ticket schließen', emoji: { name: '🔒' }, custom_id: `ticket:close:${userId}` },
         ],
       },
     ],
   };
+}
+
+/** Direktnachricht bei Ablehnung */
+async function sendRejectDm(userId, guildName) {
+  const dm = await api('/users/@me/channels', { method: 'POST', body: JSON.stringify({ recipient_id: userId }) });
+  if (!dm.ok) return false;
+  const ch = await dm.json();
+  const res = await api(`/channels/${ch.id}/messages`, { method: 'POST', body: JSON.stringify({
+    embeds: [{
+      color: 0xda373c,
+      author: { name: 'CW BlueDragons · Team-Management', icon_url: `${process.env.URL || ''}/blue-dragons-logo.png` },
+      title: '📩 Deine Tester-Bewerbung',
+      description: 'Hallo,\n\nvielen Dank für dein Interesse an **CW BlueDragons** und die Zeit, die du dir für die Bewerbung genommen hast.\n\nNach reiflicher Überlegung hat sich das **Team-Management leider gegen dich entschieden**.\n\nDas ist keine Entscheidung gegen dich als Person – wir wünschen dir auf deinem weiteren Weg **viel Glück und Erfolg!** 🍀\n\nSportliche Grüße\n**Dein CW BlueDragons Team** 🐉',
+      thumbnail: { url: `${process.env.URL || ''}/blue-dragons-logo.png` },
+      footer: { text: guildName ? `Gesendet von ${guildName}` : 'CW BlueDragons' },
+    }],
+  }) });
+  return res.ok;
 }
 
 // ---------- Infoblatt-Formular ----------
@@ -298,4 +320,5 @@ async function archiveAndCloseTicket(guildId, applicantId, channelId, closedBy) 
   return { ok: true };
 }
 
-module.exports = { TESTER_QUESTIONS, INFO_PARTS, openTesterTicket, archiveAndCloseTicket, getInfo, buildInfoModal, saveInfoPart, infoEmbed, postInfoToChannel, api };
+module.exports = {
+  sendRejectDm, TESTER_QUESTIONS, INFO_PARTS, openTesterTicket, archiveAndCloseTicket, getInfo, buildInfoModal, saveInfoPart, infoEmbed, postInfoToChannel, api };

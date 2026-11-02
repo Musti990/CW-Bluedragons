@@ -1190,8 +1190,9 @@ async function handleTicketButton(interaction) {
   ];
 
   if (action === 'reject') {
+    const dmOk = await require('./lib/ticket-core').sendRejectDm(applicantId).catch(() => false);
     embed.color = 0xda373c;
-    embed.fields = [{ name: 'Status', value: `❌ Abgelehnt von **${adminName}**` }];
+    embed.fields = [{ name: 'Status', value: `❌ Abgelehnt von **${adminName}**\n${dmOk ? '📩 Direktnachricht wurde zugestellt.' : '⚠️ Direktnachricht nicht möglich (Spieler hat DMs geschlossen).'}` }];
     return json(200, { type: 7, data: { content: `<@${applicantId}>`, embeds: [embed], components: closeRow } });
   }
 
@@ -1202,17 +1203,7 @@ async function handleTicketButton(interaction) {
   if (!role) return eph('⚠️ Es gibt keine Rolle **Tester** auf dem Server.');
   const put = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${applicantId}/roles/${role.id}`, { method: 'PUT', headers: authHeader });
   if (!put.ok) return eph('⚠️ Rolle konnte nicht vergeben werden. Die Bot-Rolle muss über **Tester** stehen.');
-  // Zusätzlich die Rolle „Dragons Spieler“ (Schrift/Emojis egal, nie die Bot-Rolle; oder fest per ACCEPT_ROLE_ID)
-  const norm = (n) => String(n || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const bdRole = roles.find((r) => r.id === process.env.ACCEPT_ROLE_ID)
-    || roles.find((r) => !r.managed && norm(r.name) === 'dragonsspieler')
-    || roles.find((r) => !r.managed && norm(r.name).includes('dragonsspieler'))
-    || roles.find((r) => !r.managed && norm(r.name).includes('bluedragons'));
-  let bdInfo = '';
-  if (bdRole) {
-    const r2 = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${applicantId}/roles/${bdRole.id}`, { method: 'PUT', headers: authHeader });
-    bdInfo = r2.ok ? ` + Rolle **${bdRole.name}**` : ` (⚠️ **${bdRole.name}** konnte nicht vergeben werden – Bot-Rolle muss darüber stehen)`;
-  }
+  const bdInfo = ''; // Beim Annehmen gibt es nur die Tester-Rolle (keine Dragons-Spieler-Rolle)
 
   const memberRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${applicantId}`, { headers: authHeader });
   if (memberRes.ok) {
