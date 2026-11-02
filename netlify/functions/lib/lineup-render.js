@@ -81,19 +81,8 @@ async function publishedPayload(pub, { ping = false } = {}) {
   const imageName = `aufstellung-team${pub.team}.png`;
   const svg = buildLineupSvg({ teamName: KADER_TEAMS[pub.team].label, title: pub.title, formation: pub.formation, players: pub.players });
   const png = await sharp(Buffer.from(svg)).png().toBuffer();
-  let role = null;
-  if (ping) {
-    // Wen markieren? Team 1: Rolle „Blue Dragons“ · Late Night: Rolle „Late Night …“ (sonst auch „Blue Dragons“)
-    // Fest einstellbar per Netlify-Variable LINEUP_PING_ROLE_ID (Team 1) bzw. LINEUP_PING_ROLE_ID_2 (Late Night)
-    try {
-      const roles = await getGuildRoles(pub.guildId);
-      const norm = (n) => String(n || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const byId = (id) => (id ? roles.find((r) => r.id === id) : null);
-      const blue = roles.find((r) => !r.managed && norm(r.name) === 'bluedragons') || roles.find((r) => !r.managed && norm(r.name).includes('bluedragons'));
-      if (String(pub.team) === '2') role = byId(process.env.LINEUP_PING_ROLE_ID_2) || roles.find((r) => !r.managed && norm(r.name).includes('latenight')) || blue;
-      else role = byId(process.env.LINEUP_PING_ROLE_ID) || blue;
-    } catch { role = null; }
-  }
+  let roles = [];
+  if (ping) roles = await require('./schedule').pingRoles(pub.guildId, pub.team).catch(() => []);
   const lines = [];
   if (pub.kickoff) lines.push(`⏰ **Anstoß:** <t:${pub.kickoff}:F> · <t:${pub.kickoff}:R>`);
   if (pub.note) lines.push(`📝 ${pub.note}`);
@@ -103,7 +92,7 @@ async function publishedPayload(pub, { ping = false } = {}) {
     components: [{ type: 1, components: [{ type: 2, style: 2, label: 'Spieler ersetzen', emoji: { name: '🔄' }, custom_id: `lineup:pubrep:${pub.id}` }] }],
     attachments: [{ id: 0, filename: imageName }],
   };
-  if (ping) { payload.content = role ? `<@&${role.id}>` : ''; payload.allowed_mentions = { roles: role ? [role.id] : [] }; }
+  if (ping) { payload.content = roles.map((r) => `<@&${r.id}>`).join(' '); payload.allowed_mentions = { roles: roles.map((r) => r.id) }; }
   const form = new FormData();
   form.append('payload_json', JSON.stringify(payload));
   form.append('files[0]', new Blob([png], { type: 'image/png' }), imageName);

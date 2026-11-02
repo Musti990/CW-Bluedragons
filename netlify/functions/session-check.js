@@ -125,6 +125,14 @@ exports.handler = async () => {
     results.push({ aufstellung: 'Fehler: ' + err.message });
   }
 
+  // Spielpläne: liegengebliebene Bild-Aufträge nachholen
+  try {
+    const sp = await require('./lib/schedule').processPendingSchedules();
+    if (sp.length) results.push({ spielplan: sp });
+  } catch (err) {
+    results.push({ spielplan: 'Fehler: ' + err.message });
+  }
+
   // Transfers: liegengebliebene Aufträge nachholen
   try {
     const tr = await require('./lib/transfers').processPendingTransfers();

@@ -17,6 +17,7 @@ exports.handler = async (event) => {
     if (payload.action === 'post') await finishLineupPost(payload);
     else if (payload.action === 'publish') await publishLineup(payload);
     else if (payload.action === 'republish') await republishLineup(payload);
+    else if (payload.action === 'schedule') await require('./lib/schedule').renderAndSend(payload.id);
     else await refreshLineup(payload);
     return { statusCode: 200, body: 'ok' };
   } catch (err) {

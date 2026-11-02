@@ -1228,7 +1228,7 @@ async function handleTicketModal(interaction) {
 }
 
 // Was gehört zum Zusagen-Bot? Alles andere (Befehle /ut-…, Cup-Buttons) gehört zum Ultimate Team Cup.
-const BD_PREFIXES = ['poll:', 'srules:', 'bdp:', 'genrole:', 'kader:', 'lineup:', 'posnick:', 'posrole:', 'ticket:', 'ticketform:', 'rsvp:'];
+const BD_PREFIXES = ['sched:', 'poll:', 'srules:', 'bdp:', 'genrole:', 'kader:', 'lineup:', 'posnick:', 'posrole:', 'ticket:', 'ticketform:', 'rsvp:'];
 function isCupInteraction(i) {
   if (i.type === 2 || i.type === 4) return String(i.data?.name || '').startsWith('ut-');
   if (i.type === 3 || i.type === 5) {
@@ -1236,6 +1236,75 @@ function isCupInteraction(i) {
     return !BD_PREFIXES.some((p) => id.startsWith(p));
   }
   return false;
+}
+
+// ---------- Gepostete Spielpläne: hinzufügen, Ergebnis, bearbeiten, löschen ----------
+async function handleSchedule(interaction) {
+  if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können den Spielplan ändern.');
+  const S = require('./lib/schedule');
+  const [, act, sid, extra] = interaction.data.custom_id.split(':');
+  const st = S.store();
+  const s = await st.get(`sched-${sid}`, { type: 'json' });
+  if (!s) return ephemeral('Diesen Spielplan gibt es nicht mehr.');
+  const val = (cid) => { for (const r of interaction.data.components || []) for (const c of r.components || []) if (c.custom_id === cid) return String(c.value || '').trim(); return ''; };
+  const all = [...s.fs.map((g, i) => ({ g, key: `f${i}` })), ...s.games.map((g, i) => ({ g, key: `g${i}` }))];
+  const byKey = (k) => (k[0] === 'f' ? s.fs : s.games)[Number(k.slice(1))];
+  const save = async (change) => { s.lastChange = change; await st.setJSON(`sched-${sid}`, s); await S.requestRender(sid); };
+  const f = (cid, label, req, value, ph, style = 1, max = 60) => ({ type: 1, components: [{ type: 4, custom_id: cid, label, style, required: req, value: value || undefined, placeholder: ph, max_length: max }] });
+
+  if (act === 'add') return json(200, { type: 9, data: { custom_id: `sched:addm:${sid}`, title: 'Freundschaftsspiel hinzufügen', components: [f('spiele', 'Spiele (eins pro Zeile, z. B. 22:20 Gegner FC)', true, '', '22:20 Gegner FC', 2, 600)] } });
+  if (act === 'addm') {
+    const add = S.parseGames(val('spiele'));
+    if (!add.length) return ephemeral('❌ Bitte mindestens ein Spiel eintragen.');
+    s.fs = [...s.fs, ...add].sort((a, b) => String(a.time || '99').localeCompare(String(b.time || '99')));
+    await save(`+${add.length} Freundschaftsspiel${add.length > 1 ? 'e' : ''} (${add.map((g) => g.time || g.opp).join(', ')})`);
+    return ephemeral(`✅ ${add.length} Freundschaftsspiel${add.length > 1 ? 'e' : ''} hinzugefügt – der Spielplan wird gleich aktualisiert.`);
+  }
+  if (act === 'res') {
+    if (!all.length) return ephemeral('Keine Spiele im Spielplan.');
+    return ephemeral('**📝 Ergebnis eintragen** – welches Spiel?', { components: [{ type: 1, components: [{ type: 3, custom_id: `sched:respick:${sid}`, placeholder: 'Spiel wählen…', options: all.slice(0, 25).map(({ g, key }) => ({ label: `${g.time || ''} vs ${g.opp}`.trim().slice(0, 100), description: g.res ? `Aktuell ${g.res[0]}:${g.res[1]}` : key[0] === 'f' ? 'Freundschaftsspiel' : s.wettbewerb, value: key })) }] }] });
+  }
+  if (act === 'respick') {
+    const key = interaction.data.values?.[0]; const g = byKey(key);
+    if (!g) return ephemeral('Dieses Spiel gibt es nicht mehr.');
+    return json(200, { type: 9, data: { custom_id: `sched:resm:${sid}:${key}`, title: `Ergebnis vs ${g.opp}`.slice(0, 45), components: [f('erg', 'Ergebnis aus unserer Sicht (z. B. 3-1)', false, g.res ? `${g.res[0]}-${g.res[1]}` : '', '3-1 · leer = Ergebnis löschen', 1, 7)] } });
+  }
+  if (act === 'resm') {
+    const g = byKey(extra); if (!g) return ephemeral('Dieses Spiel gibt es nicht mehr.');
+    const raw = val('erg');
+    if (!raw) { delete g.res; await save(`Ergebnis vs ${g.opp} gelöscht`); return ephemeral(`🗑️ Ergebnis vs **${g.opp}** gelöscht.`); }
+    const r = S.parseScore(raw); if (!r) return ephemeral('❌ Ergebnis bitte so eintragen: **3-1** (zuerst unsere Tore).');
+    g.res = r;
+    const out = r[0] > r[1] ? '✅ Sieg' : r[0] < r[1] ? '❌ Niederlage' : '➖ Unentschieden';
+    await save(`${g.opp} ${r[0]}:${r[1]} (${out.split(' ')[1]})`);
+    return ephemeral(`${out}: **CW ${r[0]}:${r[1]} ${g.opp}** – der Spielplan wird gleich aktualisiert.`);
+  }
+  if (act === 'edit') {
+    return json(200, { type: 9, data: { custom_id: `sched:editm:${sid}`, title: 'Spielplan bearbeiten', components: [
+      f('datum', 'Datum (TT.MM.JJJJ)', true, s.datum, '01.11.2026', 1, 10),
+      f('treffen', 'Treffen (HH:MM)', true, s.treffen, '19:30', 1, 5),
+      f('fs', 'Freundschaftsspiele (eins pro Zeile)', false, s.fs.map(S.gameLine).join('\n'), '19:45 Gegner FC', 2, 900),
+      f('wettbewerb', 'Liga / Cup – Name (optional)', false, s.wettbewerb, 'PL4 Quali Spiele', 1, 60),
+      f('spiele', 'Liga/Cup-Spiele (pro Zeile, H/A am Ende)', false, s.games.map(S.gameLine).join('\n'), '20:15 FCG ESPORTS A', 2, 900),
+    ] } });
+  }
+  if (act === 'editm') {
+    const datum = val('datum'), treffen = val('treffen');
+    if (!/^\d{1,2}\.\d{1,2}\.(\d{2}|\d{4})$/.test(datum) || !/^\d{1,2}[:.]\d{2}$/.test(treffen)) return ephemeral('❌ Datum als **TT.MM.JJJJ** und Treffen als **HH:MM** eintragen.');
+    // Ergebnisse behalten, wenn Uhrzeit + Gegner gleich bleiben
+    const keep = (list, old) => list.map((g) => { const o = old.find((x) => x.time === g.time && x.opp.toLowerCase() === g.opp.toLowerCase()); return o?.res ? { ...g, res: o.res } : g; });
+    s.fs = keep(S.parseGames(val('fs')), s.fs); s.games = keep(S.parseGames(val('spiele')), s.games);
+    s.datum = datum; s.treffen = treffen.replace('.', ':'); s.wettbewerb = val('wettbewerb') || 'Liga / Cup'; s.kick = parseKickoff(s.treffen, s.datum);
+    await save('Spielplan bearbeitet');
+    return ephemeral('✅ Gespeichert – der Spielplan wird gleich aktualisiert.');
+  }
+  if (act === 'del') return ephemeral('🗑️ Spielplan wirklich löschen?', { components: [{ type: 1, components: [{ type: 2, style: 4, label: 'Ja, löschen', custom_id: `sched:delok:${sid}` }] }] });
+  if (act === 'delok') {
+    await fetch(`https://discord.com/api/v10/channels/${s.channelId}/messages/${s.messageId}`, { method: 'DELETE', headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}` } });
+    await st.delete(`sched-${sid}`);
+    return json(200, { type: 7, data: { content: '🗑️ Spielplan gelöscht.', components: [] } });
+  }
+  return ephemeral('Unbekannte Aktion.');
 }
 
 // ---------- Bedien-Panels (/panel): Session und Aufstellung per Klick ----------
@@ -1296,11 +1365,14 @@ function lineupPanel() {
     embeds: [{
       color: 0x1f6bff,
       title: '📋 AUFSTELLUNG',
-      description: 'Klick auf dein Team, gib optional einen Titel ein (z. B. „Aufstellung Cup“) – danach öffnet sich der Aufstellungs-Builder: Formation wählen, Spieler einsetzen, fertig ist das Bild.',
+      description: 'Klick auf dein Team, gib optional einen Titel ein (z. B. „Aufstellung Cup“) – danach öffnet sich der Aufstellungs-Builder: Formation wählen, Spieler einsetzen, fertig ist das Bild.\n\n**🗓️ Spielplan / Freundschaftsspiele** – Datum, Treffen, Freundschaftsspiele und Liga-/Cup-Spiele eintragen und in einen Kanal posten.',
       thumbnail: { url: `${process.env.URL}/blue-dragons-logo.png` },
       footer: { text: 'Nur Admins · Der Builder ist nur für dich sichtbar' },
     }],
-    components: [{ type: 1, components: Object.entries(KADER_TEAMS).map(([team, t]) => ({ type: 2, style: 1, label: `Aufstellung · ${t.label}`.slice(0, 80), emoji: { name: '📋' }, custom_id: `bdp:lu:${team}` })) }],
+    components: [
+      { type: 1, components: Object.entries(KADER_TEAMS).map(([team, t]) => ({ type: 2, style: 1, label: `Aufstellung · ${t.label}`.slice(0, 80), emoji: { name: '📋' }, custom_id: `bdp:lu:${team}` })) },
+      { type: 1, components: [{ type: 2, style: 3, label: 'Spielplan / Freundschaftsspiele', emoji: { name: '🗓️' }, custom_id: 'bdp:sp_start' }] },
+    ],
   };
 }
 
@@ -1470,6 +1542,48 @@ async function handlePanelAction(interaction) {
     return json(200, { type: 7, data: { content: (body.data?.content || '✅ Gepostet!') + (body.data?.content?.startsWith('✅') ? ` → <#${draft.channelId}>` : ''), components: [] } });
   }
 
+  // ---------- Spielplan / Freundschaftsspiele ----------
+  if (id === 'bdp:sp_start') {
+    return ephemeral('**🗓️ Spielplan** – für welches Team?', { components: [{ type: 1, components: Object.entries(KADER_TEAMS).map(([team, t]) => ({ type: 2, style: 1, label: t.label, custom_id: `bdp:sp_team:${team}` })) }] });
+  }
+  if (id.startsWith('bdp:sp_team:')) {
+    const team = id.split(':')[2];
+    const f = (cid, label, req, ph, style = 1, max = 60, value) => ({ type: 1, components: [{ type: 4, custom_id: cid, label, style, required: req, placeholder: ph, max_length: max, value }] });
+    const d = new Intl.DateTimeFormat('de-AT', { timeZone: 'Europe/Vienna', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date());
+    return json(200, { type: 9, data: { custom_id: `bdp:sp_modal:${team}`, title: `Spielplan · ${KADER_TEAMS[team]?.label || ''}`.slice(0, 45), components: [
+      f('datum', 'Datum (TT.MM.JJJJ)', true, '01.11.2026', 1, 10, d),
+      f('treffen', 'Treffen (HH:MM)', true, '19:30', 1, 5),
+      f('fs', 'Freundschaftsspiele (eins pro Zeile)', false, '19:45 Gegner FC\n20:10 Noch ein Gegner', 2, 600),
+      f('wettbewerb', 'Liga / Cup – Name (optional)', false, 'z. B. PL4 Quali Spiele', 1, 60),
+      f('spiele', 'Liga/Cup-Spiele (pro Zeile, H/A am Ende)', false, '20:15 FCG ESPORTS A\n20:40 RAPTORS UNITED H', 2, 900),
+    ] } });
+  }
+  if (id.startsWith('bdp:sp_modal:')) {
+    const team = id.split(':')[2];
+    const datum = modalValue(interaction, 'datum'), treffen = modalValue(interaction, 'treffen');
+    if (!/^\d{1,2}\.\d{1,2}\.(\d{2}|\d{4})$/.test(datum)) return ephemeral('❌ Datum bitte als **TT.MM.JJJJ** eintragen.');
+    if (!/^\d{1,2}[:.]\d{2}$/.test(treffen)) return ephemeral('❌ Treffen bitte als **HH:MM** eintragen.');
+    const { parseGames: parse } = require('./lib/schedule');
+    const fs = parse(modalValue(interaction, 'fs')), games = parse(modalValue(interaction, 'spiele'));
+    if (!fs.length && !games.length) return ephemeral('❌ Bitte mindestens ein Spiel eintragen (Freundschaftsspiel oder Liga/Cup).');
+    const draft = { team, datum, treffen: treffen.replace('.', ':'), fs, wettbewerb: modalValue(interaction, 'wettbewerb') || 'Liga / Cup', games };
+    await lineupStore().setJSON(`spdraft-${interaction.member.user.id}`, draft);
+    return ephemeral(`**🗓️ Spielplan ${datum}** · ${fs.length + games.length} ${fs.length + games.length === 1 ? 'Spiel' : 'Spiele'}\nIn welchen Kanal posten?`, {
+      components: [{ type: 1, components: [{ type: 8, custom_id: 'bdp:sp_ch', placeholder: 'Kanal auswählen…', channel_types: [0, 5], min_values: 1, max_values: 1, default_values: [{ id: interaction.channel_id, type: 'channel' }] }] }],
+    });
+  }
+  if (id === 'bdp:sp_ch') {
+    const st = lineupStore();
+    const d = await st.get(`spdraft-${interaction.member.user.id}`, { type: 'json' });
+    if (!d) return json(200, { type: 7, data: { content: 'Der Entwurf ist abgelaufen – bitte neu starten.', components: [] } });
+    const S = require('./lib/schedule');
+    const sid = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    await S.store().setJSON(`sched-${sid}`, { id: sid, guildId: interaction.guild_id, channelId: interaction.data.values?.[0], team: d.team, teamLabel: KADER_TEAMS[d.team]?.label || 'CW BlueDragons', datum: d.datum, treffen: d.treffen, kick: parseKickoff(d.treffen, d.datum), fs: d.fs, wettbewerb: d.wettbewerb, games: d.games, messageId: null, lastChange: null });
+    await st.delete(`spdraft-${interaction.member.user.id}`);
+    await S.requestRender(sid);
+    return json(200, { type: 7, data: { content: `✅ Spielplan für **${d.datum}** wird in <#${interaction.data.values?.[0]}> gepostet – das Bild erscheint in ein paar Sekunden.`, components: [] } });
+  }
+
   if (id.startsWith('bdp:lu:')) {
     const team = id.split(':')[2];
     return json(200, { type: 9, data: { custom_id: `bdp:lu_modal:${team}`, title: `Aufstellung · ${KADER_TEAMS[team]?.label || ''}`.slice(0, 45), components: [{ type: 1, components: [{ type: 4, custom_id: 'titel', style: 1, label: 'Titel (optional)', required: false, max_length: 60, placeholder: 'z. B. Aufstellung Cup' }] }] } });
@@ -1582,6 +1696,10 @@ exports.handler = async (event) => {
 
   if (interaction.type === 2 && interaction.data?.name === 'panel') {
     return handlePanelCommand(interaction);
+  }
+
+  if ((interaction.type === 3 || interaction.type === 5) && String(interaction.data?.custom_id || '').startsWith('sched:')) {
+    return handleSchedule(interaction);
   }
 
   if ((interaction.type === 3 || interaction.type === 5) && String(interaction.data?.custom_id || '').startsWith('bdp:')) {
