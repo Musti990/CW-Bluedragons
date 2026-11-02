@@ -288,7 +288,7 @@ export async function refreshGroupGraphic(t, gName, { fresh: isNew = false, cont
 export async function refreshKOGraphic(t, { fresh: isNew = false } = {}) {
   try {
     const cfg = await getConfig();
-    if (!cfg.channels.ko || !["ko", "fertig"].includes(t.status)) return;
+    if (!["ko", "fertig"].includes(t.status)) return;
     const round = t.koRound;
     const ms = t.matches.filter((m) => m.phase === "ko" && m.round === round).sort((a, b) => (a.final ? 0 : 1) - (b.final ? 0 : 1) || a.slot - b.slot);
     if (!ms.length) return;
@@ -302,18 +302,19 @@ export async function refreshKOGraphic(t, { fresh: isNew = false } = {}) {
       const img = await G.roundImage({ title, sub: t.name, matches: list.map(row), big });
       const cur = (await get(tKey(t.channelId)))?.msgs?.[key];
       const id = cur?.id && cur.round === round && !isNew ? cur.id : null;
-      const res = await sendFiles(ch, id ? {} : { content: `📊 **${title}**` }, [{ name: fileName, buffer: img }], id);
+      const role = cfg.roles.rounds?.[title === "Spiel um Platz 3" ? "Spiel um Platz 3" : title];
+      const line = `${role ? `<@&${role}> ` : ""}🟢 **${title}** – ihr dürft spielen! Ergebnis unten über **Ergebnis eintragen**.`;
+      const res = await sendFiles(ch, id ? {} : { content: line, allowed_mentions: { roles: role ? [role] : [] } }, [{ name: fileName, buffer: img }], id);
       if (!id && res?.id) await mutate(tKey(t.channelId), (x) => { x.msgs = x.msgs || {}; x.msgs[key] = { id: res.id, round }; });
     };
     if (isFinal) {
       // Eigene Kanäle: 🏆 Finale und 🥉 Spiel um Platz 3 (ohne Kanal → K.-o.-Kanal)
-      await post("gfxFinal", cfg.channels.final || cfg.channels.ko, "Finale", ms.filter((m) => !m.p3), "finale.png", true);
-      await post("gfxP3", cfg.channels.p3 || cfg.channels.ko, "Spiel um Platz 3", ms.filter((m) => m.p3), "spiel-um-platz-3.png", true);
+      await post("gfxFinal", cfg.channels.final || cfg.channels.kor || cfg.channels.ko, "Finale", ms.filter((m) => !m.p3), "finale.png", true);
+      await post("gfxP3", cfg.channels.p3 || cfg.channels.kor || cfg.channels.ko, "Spiel um Platz 3", ms.filter((m) => m.p3), "spiel-um-platz-3.png", true);
     } else {
       // Achtel-, Viertel-, Halbfinale: eigener Kanal (ohne Kanal → K.-o.-Kanal)
       const rn = T.koRoundName(t, round);
-      const key = { Achtelfinale: "af", Viertelfinale: "vf", Halbfinale: "hf" }[rn];
-      await post("gfxKo", (key && cfg.channels[key]) || cfg.channels.ko, rn, ms, `ko-runde-${round}.png`, false);
+      await post("gfxKo", koChannelOf(cfg, t, ms[0]), rn, ms, `ko-runde-${round}.png`, false);
     }
   } catch (e) { console.error("KO-Grafik:", e?.message || e); }
 }
@@ -333,10 +334,7 @@ async function postGroupFreigabe(t, g, round, cfg) {
 
 /** KO-Kanal leeren (Turnierbaum und ggf. Ergebnis-Panel bleiben) und die neue Runde posten */
 async function postKoFreigabe(t, cfg) {
-  if (!cfg.channels.ko) return;
-  const fresh = (await get(tKey(t.channelId))) || t;
-  try { await purgeExcept(cfg.channels.ko, [fresh.msgs?.bracket, fresh.msgs?.koRes]); } catch (e) { console.error("KO-Kanal leeren:", e?.message || e); }
-  await sendMessage(cfg.channels.ko, V.koRoundPost(t, t.members, cfg.roles.rounds || {}, cfg.channels.kor));
+  // Freigabe = Bild der Runde mit kurzer Zeile + Markierung der Runden-Rolle (im jeweiligen Runden-Kanal)
   await refreshKOGraphic((await get(tKey(t.channelId))) || t, { fresh: true });
 }
 
@@ -349,17 +347,29 @@ export async function doKickoff(channelId) {
 
 // ---------- Ergebniskanäle ----------
 /** Wo landen Ergebnis-Nachrichten? Gruppe → eigener Ergebniskanal (sonst Gruppenkanal), K.-o. → KO-Kanal */
-export const resultChannelOf = (cfg, m) => (m.phase === "gruppe" ? cfg.channels["r" + m.group] || cfg.channels["g" + m.group] : cfg.channels.kor || cfg.channels.ko);
+/** K.-o.: In welchen Kanal gehört ein Spiel? Achtel-/Viertel-/Halbfinale, Spiel um Platz 3, Finale (Sechzehntelfinale → Achtelfinale-Kanal) */
+export function koKeyOf(t, m) {
+  if (m.p3) return "p3";
+  if (m.final) return "final";
+  return { Sechzehntelfinale: "af", Achtelfinale: "af", Viertelfinale: "vf", Halbfinale: "hf" }[T.koRoundName(t, m.round)] || "af";
+}
+export const koChannelOf = (cfg, t, m) => cfg.channels[koKeyOf(t, m)] || cfg.channels.kor || cfg.channels.ko;
+export const resultChannelOf = (cfg, m, t) => (m.phase === "gruppe" ? cfg.channels["r" + m.group] || cfg.channels["g" + m.group] : t ? koChannelOf(cfg, t, m) : cfg.channels.kor || cfg.channels.ko);
 
 /** Ergebnis-Panel im KO-Ergebniskanal: pro Runde neu posten (damit es unten steht), sonst aktualisieren */
 export async function refreshKOResultPanel(t, fresh = false) {
   const cfg = await getConfig();
-  const ch = cfg.channels.kor;
-  if (!ch || !t.koSize) return;
-  const old = t.msgs.koRes;
-  const id = fresh ? (await sendMessage(ch, V.koResultPanel(t)))?.id : await upsertMessage(ch, old, V.koResultPanel(t));
-  if (fresh && old) await editMessage(ch, old, { ...V.koResultPanel({ ...t, status: "vorbei" }), components: [] });
-  if (id && id !== old) { await mutate(tKey(t.channelId), (x) => { x.msgs.koRes = id; }); }
+  if (!t.koSize) return;
+  const cur = t.status === "ko" ? T.currentMatches(t) : [];
+  const keys = [...new Set(cur.map((m) => koKeyOf(t, m)))];
+  for (const key of keys) {
+    const ch = cfg.channels[key] || cfg.channels.kor;
+    if (!ch) continue;
+    const view = V.koResultPanel(t, (m) => koKeyOf(t, m) === key);
+    const old = t.msgs?.koResBy?.[key];
+    const id = fresh || !old ? (await sendMessage(ch, view))?.id : await upsertMessage(ch, old, view);
+    if (id && id !== old) await mutate(tKey(t.channelId), (x) => { x.msgs.koResBy = { ...(x.msgs.koResBy || {}), [key]: id }; });
+  }
 }
 
 export async function refreshResultPanel(t, gName) {
@@ -374,7 +384,7 @@ export async function refreshResultPanel(t, gName) {
 // ---------- Größenvideos ----------
 export async function postVideoRequest(t, v, m) {
   const cfg = await getConfig();
-  const ch = resultChannelOf(cfg, m);
+  const ch = resultChannelOf(cfg, m, t);
   if (!ch) return;
   const msg = await sendMessage(ch, V.videoPost(v, t.members[v.to] || []));
   if (msg) await mutate(tKey(t.channelId), (x) => { const y = x.videos.find((z) => z.id === v.id); if (y) { y.msg = msg.id; y.ch = ch; } });
@@ -412,7 +422,7 @@ export async function afterResult(t, m, events, byAdmin = false) {
 }
 
 async function afterResultWork(t, m, events, cfg) {
-  const ch = resultChannelOf(cfg, m);
+  const ch = resultChannelOf(cfg, m, t);
   await closeAsk(t, m, m.auto ? "auto" : "bestaetigt");
   if (m.phase === "gruppe") await refreshGroupPlan(t, m.group); else { await refreshBracket(t); if (!events?.length) await refreshKOResultPanel(t); }
   // Grafik des gerade gespielten Spieltags/der Runde mit dem neuen Ergebnis aktualisieren
@@ -431,7 +441,7 @@ async function refreshGroupGraphicFor(t, m) {
 export async function askOpponent(t, m, reporterClub, h, a, pen) {
   const cfg = await getConfig();
   const opp = reporterClub === m.home ? m.away : m.home;
-  const ch = resultChannelOf(cfg, m);
+  const ch = resultChannelOf(cfg, m, t);
   if (!ch) return;
   const msg = await sendMessage(ch, V.confirmAsk(m, reporterClub, t.members[opp] || [], h, a, pen));
   if (msg) await mutate(tKey(t.channelId), (x) => { const y = x.matches.find((z) => z.id === m.id); if (y) y.ask = { ch, id: msg.id, by: reporterClub, h, a, pen }; });
@@ -463,7 +473,7 @@ export async function runAutoConfirm() {
 
 export async function notifyConflict(t, m) {
   const cfg = await getConfig();
-  const ch = cfg.channels.log || resultChannelOf(cfg, m);
+  const ch = cfg.channels.log || resultChannelOf(cfg, m, t);
   const role = cfg.roles.turnierleitung;
   const line = (c) => { const r = m.reports[c]; return `• ${flagOf(c)} ${V.esc(c)} meldet **${r.h}:${r.a}${r.pen ? ` (${r.pen[0]}:${r.pen[1]} i.E.)` : ""}**`; };
   await closeAsk(t, m, "konflikt");

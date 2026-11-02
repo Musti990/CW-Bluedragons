@@ -1735,6 +1735,13 @@ exports.handler = async (event) => {
     return ephemeral(already ? '✅ Du hast die Regeln bereits akzeptiert.' : '✅ **Danke!** Du hast die Server-Regeln akzeptiert – die **Rollenauswahl** ist jetzt für dich freigeschaltet.');
   }
 
+  if (interaction.type === 2 && interaction.data?.name === 'latenight-einrichten') {
+    if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können das einrichten.');
+    const r = await require('./lib/latenight').setupLateNight(interaction.guild_id);
+    if (r.error) return ephemeral('⚠️ ' + r.error);
+    return ephemeral(['🌙 **Late Night ist eingerichtet!**', r.created.length ? `🆕 Angelegt: ${r.created.join(' · ')}` : '', r.found.length ? `🔎 Schon da (Rechte aktualisiert): ${r.found.join(' · ')}` : '', `🔒 Sehen darf nur die Rolle **${r.role}** (Admins sehen immer alles).`, '🗳️ In der Abstimmung können Spieler nur per Button abstimmen – Events postest du über das Event-Panel direkt dorthin.'].filter(Boolean).join('\n'));
+  }
+
   if (interaction.type === 2 && interaction.data?.name === 'test') {
     if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können testen.');
     const typ = (interaction.data.options || []).find((o) => o.name === 'typ')?.value || 'willkommen';

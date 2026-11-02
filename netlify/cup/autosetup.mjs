@@ -47,13 +47,11 @@ const PLAN = [
     { key: "g" + g, name: "⚽・" + fancy("UT-Gruppe-" + g), cat: "groups", prof: "group:" + g },
     { key: "r" + g, name: "📋・" + fancy("UT-" + g + "-Ergebnisse"), cat: "groups", prof: "groupres:" + g },
   ]),
-  { key: "ko", name: "⚔️・" + fancy("UT-KO-Phase"), cat: "ko", prof: "ko" },
-  { key: "af", name: "🔥・" + fancy("UT-Achtelfinale"), cat: "ko", prof: "public" },
-  { key: "vf", name: "⚡・" + fancy("UT-Viertelfinale"), cat: "ko", prof: "public" },
-  { key: "hf", name: "💥・" + fancy("UT-Halbfinale"), cat: "ko", prof: "public" },
-  { key: "p3", name: "🥉・" + fancy("UT-Spiel-um-Platz-3"), cat: "ko", prof: "public" },
-  { key: "final", name: "🏆・" + fancy("UT-Finale"), cat: "ko", prof: "public" },
-  { key: "kor", name: "📋・" + fancy("UT-KO-Ergebnisse"), cat: "ko", prof: "kores" },
+  { key: "af", name: "🔥・" + fancy("UT-Achtelfinale"), cat: "ko", prof: "koround" },
+  { key: "vf", name: "⚡・" + fancy("UT-Viertelfinale"), cat: "ko", prof: "koround" },
+  { key: "hf", name: "💥・" + fancy("UT-Halbfinale"), cat: "ko", prof: "koround" },
+  { key: "p3", name: "🥉・" + fancy("UT-Spiel-um-Platz-3"), cat: "ko", prof: "koround" },
+  { key: "final", name: "🏆・" + fancy("UT-Finale"), cat: "ko", prof: "koround" },
   { key: "admin", name: "⚙️・" + fancy("UT-Admin"), cat: "ko", prof: "admins" },
 ];
 const CATS = { info: "🐉 UT CUP · INFO", cup: "🏆 ULTIMATE TEAM CUP", groups: "⚽ UT GRUPPEN", ko: "⚔️ UT K.-O.-PHASE" };
@@ -98,6 +96,8 @@ function overwrites(prof, roles) {
   if (prof.startsWith("group:")) return [hide, see(roles.groups?.[prof.slice(6)], P.SEND), lead].filter(Boolean);
   if (prof.startsWith("groupres:")) return [hide, see(roles.groups?.[prof.slice(9)], P.SEND, P.FILES), lead].filter(Boolean);
   if (prof === "ko") return [hide, see(roles.koPhase, P.SEND), ...ROUND_ROLES.map((r) => see(roles.rounds?.[r], P.SEND)), lead].filter(Boolean);
+  // Runden-Kanäle (Achtel- bis Finale): alle lesen, Spieler der K.-o.-Phase dürfen Screenshots posten
+  if (prof === "koround") return [ro, see(roles.koPhase, P.SEND, P.FILES), ...ROUND_ROLES.map((r) => see(roles.rounds?.[r], P.SEND, P.FILES)), lead].filter(Boolean);
   if (prof === "kores") return [hide, see(roles.koPhase, P.SEND, P.FILES), ...ROUND_ROLES.map((r) => see(roles.rounds?.[r], P.SEND, P.FILES)), lead].filter(Boolean);
   return [];
 }
@@ -118,6 +118,15 @@ export async function setupRoles() {
 
 /** Hauptfunktion: plant alles und stellt die Aufträge in die Warteschlange */
 export const KO_CHANNEL_KEYS = ["af", "vf", "hf", "p3", "final"];
+
+/** Alte Kanäle „UT-KO-Phase“ und „UT-KO-Ergebnisse“ löschen (werden nicht mehr gebraucht) */
+export async function removeOldKoChannels() {
+  const all = (await discord(`/guilds/${G()}/channels`)) || [];
+  const old = all.filter((c) => ["ko", "kor"].includes(detectKey(c.name)));
+  for (const c of old) await discord(`/channels/${c.id}`, "DELETE");
+  await mutate("config", (cfg) => { if (cfg.channels) { delete cfg.channels.ko; delete cfg.channels.kor; } }, { initial: { channels: {}, roles: {} } });
+  return old.map((c) => c.name);
+}
 
 export async function setupAll({ create = true, perms = true, kickoff = "20:00", only = null } = {}) {
   const roles = await setupRoles();

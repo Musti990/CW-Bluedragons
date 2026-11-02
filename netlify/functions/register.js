@@ -103,6 +103,11 @@ exports.handler = async () => {
   });
 
   commands.push({
+    name: 'latenight-einrichten',
+    description: 'Legt die Kategorie Late Night an (LNC-Call, Latenight-Chat, Latenight-Abstimmung) – nur Admins',
+  });
+
+  commands.push({
     name: 'test',
     description: 'Willkommen, Good Bye oder Beitritt (inkl. Auto-Rollen) an dir selbst testen – nur Admins',
     options: [{ name: 'typ', description: 'Was testen?', type: 3, required: true, choices: [

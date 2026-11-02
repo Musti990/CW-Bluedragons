@@ -577,17 +577,17 @@ export function videoPost(v, users) {
 }
 export const videoModal = (id) => ({ type: 9, data: { custom_id: `vid_m:${id}`, title: "Größenvideo einreichen", components: [row({ type: 4, custom_id: "link", label: "Video-Link (YouTube, Streamable, Medal …)", style: 1, required: true, max_length: 300, placeholder: "https://" })] } });
 
-export function koResultPanel(t) {
+export function koResultPanel(t, only = null) {
   const open = t.status === "ko";
-  const cur = open ? currentMatches(t).sort((a, b) => a.slot - b.slot) : [];
+  const cur = open ? currentMatches(t).filter((m) => !only || only(m)).sort((a, b) => a.slot - b.slot) : [];
   const lbl = (m) => (m.p3 ? "Platz 3" : m.final ? "Finale" : `Spiel ${m.slot + 1}`);
-  const title = open ? koRoundName(t) + (cur.some((m) => m.p3) ? " + Spiel um Platz 3" : "") : null;
+  const title = open ? (cur.length === 1 && cur[0].p3 ? "Spiel um Platz 3" : cur.length === 1 && cur[0].final ? "Finale" : koRoundName(t)) : null;
   return {
     embeds: [{
       color: COLOR,
-      title: "📋 K.-o.-Phase · Ergebnisse",
+      title: "📋 Ergebnis eintragen",
       description:
-        "Hier tragt ihr eure K.-o.-Ergebnisse ein.\n\n" +
+        "Hier tragt ihr das Ergebnis dieser Runde ein.\n\n" +
         "• **Ergebnis eintragen:** ein Spieler trägt ein, der Gegner hat **2 Minuten** zum Bestätigen. Bei Unentschieden das Elfmeterschießen mit angeben.\n" +
         "• **📸 Screenshot:** Nach dem Spiel postet der Sieger ein Foto vom Endstand hier im Kanal.\n\n" +
         (open ? `**${title}**\n${cur.map((m) => `\`${lbl(m)}\` ${matchLine(m, false)}`).join("\n")}` : t.status === "fertig" ? "_Das Turnier ist beendet._" : t.status === "vorbei" ? "_Diese Runde ist beendet – die nächste Runde steht weiter unten._" : "_Die K.-o.-Phase hat noch nicht begonnen._"),

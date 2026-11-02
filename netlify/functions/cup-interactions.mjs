@@ -265,20 +265,23 @@ async function setup(i, context, cfg) {
     return background(i, context, async () => {
       const r = await AS.setupAll({ create: true, perms: true, only: AS.KO_CHANNEL_KEYS });
       await AS.processSetupJobs(14000);
+      const removed = await AS.removeOldKoChannels().catch(() => []);
       const name = (k) => CHANNEL_TYPES[k] || k;
       const have = AS.KO_CHANNEL_KEYS.filter((k) => r.found[k]);
       return [
         "✅ **K.-o.-Kanäle werden eingerichtet**",
         have.length ? `🔎 Schon vorhanden: ${have.map(name).join(", ")}` : "",
         r.missing.length ? `🆕 Wird angelegt: ${r.missing.map((m) => name(m.key)).join(", ")}` : "🆕 Alle K.-o.-Kanäle gibt es schon.",
-        "🔒 Alle dürfen lesen, schreiben kann nur der Bot.",
-        "-# Ab jetzt landet jede Runde (Achtel-, Viertel-, Halbfinale, Platz 3, Finale) mit eigenem Bild in ihrem Kanal.",
+        removed.length ? `🗑️ Gelöscht (nicht mehr nötig): ${removed.join(", ")}` : "",
+        "🔒 Alle dürfen lesen · Spieler der K.-o.-Phase dürfen dort Screenshots posten.",
+        "-# Jede Runde hat jetzt alles in ihrem Kanal: Markierung, Bild und „Ergebnis eintragen“.",
       ].filter(Boolean).join("\n");
     });
   }
   if (sub.name === "alles") {
     return background(i, context, async () => {
       const r = await AS.setupAll({ create: o.fehlende_erstellen ?? true, perms: o.rechte_setzen ?? true, kickoff: o.anpfiff ?? "20:00" });
+      await AS.removeOldKoChannels().catch(() => []);
       await AS.processSetupJobs(14000);
       const pr = await AS.setupProgress();
       const name = (k) => (k.startsWith("day") ? DAYS[Number(k.slice(3)) - 1] : CHANNEL_TYPES[k] || k);
