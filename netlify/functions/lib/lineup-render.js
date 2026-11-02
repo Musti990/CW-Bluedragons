@@ -79,11 +79,13 @@ async function refreshLineup({ key }) {
 // ---------- Bestätigen: X Min. vorher Erinnerung, Y Min. später entfernen ----------
 const CONFIRM_BEFORE_MIN = 30;
 const CONFIRM_GRACE_MIN = 5;
+/** Frist: NUR wenn der Admin „Bestätigen bis“ eingetragen hat – sonst keine Frist, keine Erinnerung, kein Entfernen */
+const deadlineOf = (pub) => pub.confirmBy || null;
 const hhmm = (unix) => new Intl.DateTimeFormat('de-AT', { timeZone: 'Europe/Vienna', hour: '2-digit', minute: '2-digit' }).format(new Date(unix * 1000));
 function confirmState(pub) {
   const ids = [...new Set(Object.values(pub.ids || {}).filter(Boolean))];
   const yes = ids.filter((u) => pub.confirm?.[u] === 'yes');
-  return { total: ids.length, yes, open: ids.filter((u) => pub.confirm?.[u] !== 'yes'), closed: !!pub.removedDone || (pub.kickoff && Date.now() / 1000 > pub.kickoff) };
+  return { total: ids.length, yes, open: ids.filter((u) => pub.confirm?.[u] !== 'yes'), closed: !!pub.removedDone || (pub.kickoff && Date.now() / 1000 > pub.kickoff) || (!pub.kickoff && pub.confirmBy && Date.now() / 1000 > pub.confirmBy + 3600) };
 }
 
 // Nachricht der veröffentlichten Aufstellung bauen (Bild + Embed + „Spieler ersetzen“-Button)
@@ -98,7 +100,7 @@ async function publishedPayload(pub, { ping = false } = {}) {
   if (pub.note) lines.push(`📝 ${pub.note}`);
   const conf = confirmState(pub);
   if (conf.total) {
-    if (pub.kickoff) lines.push(`✅ **Bitte bis ${hhmm(pub.kickoff - CONFIRM_BEFORE_MIN * 60)} Uhr bestätigen** – sonst wirst du ersetzt.`);
+    if (deadlineOf(pub)) lines.push(`✅ **Bitte bis ${hhmm(deadlineOf(pub))} Uhr bestätigen** – sonst wirst du ersetzt.`);
     lines.push('', `**Bestätigt (${conf.yes.length}/${conf.total})**`, conf.yes.length ? conf.yes.map((u) => `✅ <@${u}>`).join(' · ') : '–');
     if (conf.open.length) lines.push(`**Offen (${conf.open.length})**`, conf.open.map((u) => `⏳ <@${u}>`).join(' · '));
   }
@@ -122,12 +124,12 @@ async function publishedPayload(pub, { ping = false } = {}) {
 }
 
 // Fertige Aufstellung als Bild in einen Kanal posten
-async function publishLineup({ key, channelId, kickoff, note }) {
+async function publishLineup({ key, channelId, kickoff, confirmBy, note }) {
   const store = lineupStore();
   const lineup = await getLineup(store, key);
   await store.delete(`publish-${key}`);
   if (!lineup) return false;
-  const pub = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), team: lineup.team, title: lineup.title, formation: lineup.formation, players: { ...lineup.players }, ids: { ...(lineup.ids || {}) }, confirm: {}, guildId: lineup.guildId, channelId, kickoff: kickoff || null, note: note || null, changes: [], createdAt: Date.now() };
+  const pub = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), team: lineup.team, title: lineup.title, formation: lineup.formation, players: { ...lineup.players }, ids: { ...(lineup.ids || {}) }, confirm: {}, guildId: lineup.guildId, channelId, kickoff: kickoff || null, confirmBy: confirmBy || null, note: note || null, changes: [], createdAt: Date.now() };
   // Fehlende Discord-IDs über den Kader nachschlagen (Name ohne „| HP:…“)
   try {
     const { getKaderPlayers } = require('./kader-core');
@@ -145,7 +147,7 @@ async function publishLineup({ key, channelId, kickoff, note }) {
   const uids = [...new Set(Object.values(pub.ids))];
   if (uids.length) {
     await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, { method: 'POST', headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({
-      content: `${uids.map((u) => `<@${u}>`).join(' ')} – ihr steht in der Aufstellung, bitte mit **✅ Bin dabei** bestätigen ☝️${pub.kickoff ? ` (bis ${hhmm(pub.kickoff - CONFIRM_BEFORE_MIN * 60)} Uhr)` : ''}`,
+      content: `${uids.map((u) => `<@${u}>`).join(' ')} – ihr steht in der Aufstellung, bitte mit **✅ Bin dabei** bestätigen ☝️${deadlineOf(pub) ? ` (bis ${hhmm(deadlineOf(pub))} Uhr)` : ''}`,
       allowed_mentions: { users: uids }, message_reference: { message_id: pub.messageId, fail_if_not_exists: false },
     }) }).catch(() => {});
   }
@@ -174,9 +176,9 @@ async function processConfirmations() {
   const post = (ch, body) => fetch(`https://discord.com/api/v10/channels/${ch}/messages`, { method: 'POST', headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   for (const b of blobs || []) {
     const pub = await store.get(b.key, { type: 'json' });
-    if (!pub?.kickoff || pub.removedDone || !pub.messageId) continue;
-    if (now > pub.kickoff + 3600) { pub.removedDone = true; await store.setJSON(b.key, pub); continue; }
-    const deadline = pub.kickoff - CONFIRM_BEFORE_MIN * 60;
+    const deadline = pub ? deadlineOf(pub) : null;
+    if (!deadline || pub.removedDone || !pub.messageId) continue;
+    if (now > Math.max(deadline, pub.kickoff || 0) + 3600) { pub.removedDone = true; await store.setJSON(b.key, pub); continue; }
     const open = confirmState(pub).open;
     if (!pub.remindedAt && now >= deadline) {
       pub.remindedAt = now;

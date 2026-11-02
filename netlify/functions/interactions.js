@@ -579,7 +579,11 @@ async function handleRoleButton(interaction) {
   const hasRole = (interaction.member?.roles || []).includes(role.id);
 
   // Tester gibt es nicht direkt: es öffnet sich ein Bewerbungs-Ticket (privater Kanal mit Infoblatt).
-  // Beim „Annehmen“ im Ticket bekommt man Tester + Dragons Spieler und den Namen „Name | Tester“.
+  // Der Klick ändert NICHTS am Namen. Erst beim „Annehmen“ im Ticket gibt es die Rolle Tester und den Namen „Name | Tester“.
+  // Wer schon Tester ist: nichts ändern (weder Rolle noch Name) – Name ändert sich NUR beim Annehmen im Ticket
+  if (roleName === 'Tester' && hasRole) {
+    return json(200, { type: 4, data: { content: '🧪 Du bist bereits **Tester**. (Entfernen kann nur ein Admin.)', flags: 64 } });
+  }
   if (roleName === 'Tester' && !hasRole) {
     const t = await openTesterTicket(interaction, roles);
     if (t.error) return json(200, { type: 4, data: { content: `⚠️ ${t.error}`, flags: 64 } });
@@ -995,6 +999,7 @@ async function handleLineupComponent(interaction) {
       components: [
         { type: 1, components: [{ type: 4, custom_id: 'zeit', style: 1, label: 'Anstoß-Uhrzeit (optional, z. B. 20:30)', required: false, max_length: 5, placeholder: '20:30' }] },
         { type: 1, components: [{ type: 4, custom_id: 'datum', style: 1, label: 'Datum (optional, leer = heute)', required: false, max_length: 10, placeholder: '02.11.' }] },
+        { type: 1, components: [{ type: 4, custom_id: 'bis', style: 1, label: 'Bestätigen bis (optional, z. B. 16:40)', required: false, max_length: 5, placeholder: 'leer = keine Frist' }] },
         { type: 1, components: [{ type: 4, custom_id: 'info', style: 2, label: 'Info (optional)', required: false, max_length: 300, placeholder: 'z. B. Treffpunkt 20:15 in der Lobby' }] },
       ],
     } });
@@ -1132,16 +1137,22 @@ async function handleLineupSendModal(interaction) {
   if (!(await isKaderAdmin(interaction))) return luEph('⛔ Nur Admins können die Aufstellung posten.');
   const [, , , channelId] = interaction.data.custom_id.split(':');
   const val = (id) => { for (const r of interaction.data.components || []) for (const c of r.components || []) if (c.custom_id === id) return String(c.value || '').trim(); return ''; };
-  const zeit = val('zeit'), datum = val('datum'), info = val('info');
-  let kickoff = null;
+  const zeit = val('zeit'), datum = val('datum'), info = val('info'), bis = val('bis');
+  let kickoff = null, confirmBy = null;
   if (zeit) {
     kickoff = parseKickoff(zeit, datum);
     if (!kickoff) return luEph('❌ Die Uhrzeit bitte so eintragen: **20:30** (Datum optional: **02.11.**)');
   }
+  if (bis) {
+    confirmBy = parseKickoff(bis, datum);
+    if (!confirmBy) return luEph('❌ „Bestätigen bis“ bitte so eintragen: **16:40**');
+    // liegt die Frist nach dem Anstoß am selben Tag? Dann ist sie wohl am Vortag gemeint – sonst so lassen
+    if (kickoff && confirmBy > kickoff) confirmBy -= 24 * 3600;
+  }
   const key = lineupKey(interaction);
   if (!(await getLineup(lineupStore(), key))) return luEph('Diese Aufstellung ist abgelaufen. Starte sie neu.');
-  await requestLineupPublish({ key, channelId, kickoff, note: info || null });
-  return luEph(`📤 Wird gepostet in <#${channelId}>${kickoff ? ` · Anstoß <t:${kickoff}:F>` : ''} – das Bild erscheint in ein paar Sekunden.`);
+  await requestLineupPublish({ key, channelId, kickoff, confirmBy, note: info || null });
+  return luEph(`📤 Wird gepostet in <#${channelId}>${kickoff ? ` · Anstoß <t:${kickoff}:F>` : ''}${confirmBy ? ` · bestätigen bis <t:${confirmBy}:t>` : ''} – das Bild erscheint in ein paar Sekunden.`);
 }
 
 async function handleLineupModal(interaction) {
@@ -1203,13 +1214,27 @@ async function handleTicketButton(interaction) {
   if (!role) return eph('⚠️ Es gibt keine Rolle **Tester** auf dem Server.');
   const put = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${applicantId}/roles/${role.id}`, { method: 'PUT', headers: authHeader });
   if (!put.ok) return eph('⚠️ Rolle konnte nicht vergeben werden. Die Bot-Rolle muss über **Tester** stehen.');
-  const bdInfo = ''; // Beim Annehmen gibt es nur die Tester-Rolle (keine Dragons-Spieler-Rolle)
+  // Willkommens-DM an den neuen Tester (Name ohne „| …“)
+  let dmName = '';
+  try { const mr = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${applicantId}`, { headers: authHeader }); if (mr.ok) { const mm = await mr.json(); dmName = String(mm.nick || mm.user?.global_name || mm.user?.username || '').split('|')[0].trim(); } } catch { /* ohne Namen */ }
+  const acceptDmOk = await require('./lib/ticket-core').sendAcceptDm(applicantId, guildId, dmName).catch(() => false);
+  const bdInfo = `\n${acceptDmOk ? '📩 Willkommens-Nachricht wurde zugestellt.' : '⚠️ Willkommens-Nachricht nicht möglich (DMs geschlossen).'}`;
 
   const memberRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${applicantId}`, { headers: authHeader });
   if (memberRes.ok) {
     const m = await memberRes.json();
-    const heldNames = new Set(roles.filter((r) => (m.roles || []).includes(r.id) || r.id === role.id).map((r) => r.name));
-    const winner = GENERAL_ROLES.find((r) => r.tag && heldNames.has(r.name));
+    // Aushilfe wird beim Annehmen als Tester entfernt
+    const normA = (n) => String(n || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const aushilfe = roles.find((r) => !r.managed && normA(r.name) === 'aushilfe');
+    let held = new Set(m.roles || []);
+    if (aushilfe && held.has(aushilfe.id)) {
+      const del = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${applicantId}/roles/${aushilfe.id}`, { method: 'DELETE', headers: { ...authHeader, 'X-Audit-Log-Reason': encodeURIComponent('Als Tester angenommen') } });
+      if (del.ok) held.delete(aushilfe.id);
+    }
+    held.add(role.id);
+    const heldNames = new Set(roles.filter((r) => held.has(r.id)).map((r) => r.name));
+    // Name: Tester hat Vorrang → „Name | Tester“
+    const winner = GENERAL_ROLES.find((r) => r.name === 'Tester') || GENERAL_ROLES.find((r) => r.tag && heldNames.has(r.name));
     const parsed = parseNick(m.nick || m.user?.global_name || m.user?.username);
     parsed.tag = winner ? winner.tag : null;
     await setNick(guildId, applicantId, buildNick(parsed));

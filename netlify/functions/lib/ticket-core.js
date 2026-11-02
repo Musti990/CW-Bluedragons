@@ -92,6 +92,31 @@ function ticketMessage(userId) {
   };
 }
 
+/** Direktnachricht beim Annehmen (mit Link zum Kanal „Dragons Tester“) */
+async function sendAcceptDm(userId, guildId, name) {
+  let testerCh = null;
+  try {
+    const chRes = await api(`/guilds/${guildId}/channels`);
+    const chans = chRes.ok ? await chRes.json() : [];
+    testerCh = chans.find((c) => c.id === process.env.TESTER_INFO_CHANNEL_ID) || chans.find((c) => [0, 5, 15].includes(c.type) && normName(c.name).includes('dragonstester'));
+  } catch { /* ohne Link */ }
+  const dm = await api('/users/@me/channels', { method: 'POST', body: JSON.stringify({ recipient_id: userId }) });
+  if (!dm.ok) return false;
+  const ch = await dm.json();
+  const where = testerCh ? `<#${testerCh.id}>` : '**#Dragons Tester**';
+  const res = await api(`/channels/${ch.id}/messages`, { method: 'POST', body: JSON.stringify({
+    embeds: [{
+      color: 0x23a55a,
+      author: { name: 'CW BlueDragons · Team-Management', icon_url: `${process.env.URL || ''}/blue-dragons-logo.png` },
+      title: '🎉 Willkommen im Team!',
+      description: `Hallo **${name || 'du'}**,\n\nherzlich willkommen bei **CW BlueDragons**! 💙\n\nUnser **Team-Management hat sich dein Profil näher angesehen** und wir würden dich **gern noch besser kennenlernen** – deshalb bist du ab sofort **Tester** bei uns. 🧪\n\n**📌 So geht's weiter:**\n📅 Alle Infos zu den **Testtagen** findest du in ${where}\n💬 Bei Fragen kannst du dich jederzeit gern bei unseren **VMs** melden.\n\nWir freuen uns auf dich und viele starke Spiele zusammen! 🔥\n\nSportliche Grüße\n**Dein CW BlueDragons Team** 🐉`,
+      thumbnail: { url: `${process.env.URL || ''}/blue-dragons-logo.png` },
+      footer: { text: 'United by Blue Fire' },
+    }],
+  }) });
+  return res.ok;
+}
+
 /** Direktnachricht bei Ablehnung */
 async function sendRejectDm(userId, guildName) {
   const dm = await api('/users/@me/channels', { method: 'POST', body: JSON.stringify({ recipient_id: userId }) });
@@ -321,4 +346,5 @@ async function archiveAndCloseTicket(guildId, applicantId, channelId, closedBy) 
 }
 
 module.exports = {
-  sendRejectDm, TESTER_QUESTIONS, INFO_PARTS, openTesterTicket, archiveAndCloseTicket, getInfo, buildInfoModal, saveInfoPart, infoEmbed, postInfoToChannel, api };
+  sendRejectDm,
+  sendAcceptDm, TESTER_QUESTIONS, INFO_PARTS, openTesterTicket, archiveAndCloseTicket, getInfo, buildInfoModal, saveInfoPart, infoEmbed, postInfoToChannel, api };
