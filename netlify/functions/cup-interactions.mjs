@@ -67,7 +67,7 @@ async function adminPanelAction(i, context, cfg, act) {
   if (!(await isPanelAdmin(i))) return eph("⛔ Das Admin-Panel dürfen nur **Admins** benutzen.");
   const t = await F.currentCup();
   later(context, () => F.refreshAdminPanel());
-  const needSignup = () => { if (!t || t.status !== "anmeldung") throw new Error("Gerade ist keine Anmeldung offen."); return t.channelId; };
+  const needSignup = () => { if (!t || !["anmeldung", "vorcheck", "auslosung"].includes(t.status)) throw new Error("Gerade ist keine Anmeldung offen."); return t.channelId; };
   switch (act) {
     case "schluss": return admin(asAdminCmd(i, "anmeldeschluss", [], needSignup()), context, cfg);
     case "checkin": return admin(asAdminCmd(i, "checkin-ende", [], t?.channelId), context, cfg);
@@ -403,7 +403,7 @@ async function manualCup(i, context) {
 
 async function admin(i, context, cfg) {
   const sub = i.data.options[0], o = opts(sub.options);
-  if (sub.name === "anmeldeschluss") return background(i, context, async () => { const t = await get(tKey(i.channel_id)); if (!t || t.status !== "anmeldung") throw new Error("In diesem Kanal ist keine Anmeldung offen."); await F.doDraw(i.channel_id); return "✅ Anmeldung geschlossen und ausgelost."; });
+  if (sub.name === "anmeldeschluss") return background(i, context, async () => { const t = await get(tKey(i.channel_id)); if (!t || !["anmeldung", "vorcheck", "auslosung"].includes(t.status)) throw new Error("In diesem Kanal ist keine Anmeldung offen."); if (t.status === "vorcheck") await F.doPreCheckEnd(i.channel_id); await F.doDraw(i.channel_id); return "✅ Anmeldung geschlossen und ausgelost (sofort, ohne Wartezeit)."; });
   if (sub.name === "checkin-ende") return background(i, context, async () => { const t = await resolveTournament(i); if (t.status !== "checkin") throw new Error("Es läuft gerade kein Check-in."); await F.doCheckinEnd(t.channelId); await F.doKickoff(t.channelId); if (t.test) await F.playVirtualMatches(t.channelId); return "✅ Check-in beendet – Spieltag 1 ist sofort freigegeben."; });
   if (sub.name === "spiele") {
     const t = await resolveTournament(i);
@@ -578,6 +578,14 @@ async function component(i, context) {
   }
 
   // --- Anmeldeliste ---
+  if (id === "cup_preci") {
+    const mine = F.clubOfUser(await getClubs(), uid);
+    if (!mine) return eph("Du bist nicht registriert.");
+    const { value: t } = await mutate(tKey(i.channel_id), (x) => T.preCheckIn(x, mine.club), { missing: "In diesem Kanal gibt es gerade keinen Cup." });
+    later(context, () => F.refreshSignup(t));
+    return eph(`✅ **${V.esc(mine.club)}** ist eingecheckt! Auslosung um <t:${Math.floor(t.times.draw / 1000)}:t>.`);
+  }
+
   if (id === "cup_join" || id === "cup_leave" || id === "cup_waitci") {
     const mine = F.clubOfUser(await getClubs(), uid);
     if (!mine) return eph(`📝 Du musst dich zuerst mit deiner EA-ID registrieren${cfg.channels.reg ? ` in <#${cfg.channels.reg}>` : ""}.`);

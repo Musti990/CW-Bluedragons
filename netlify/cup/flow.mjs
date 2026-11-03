@@ -1,11 +1,11 @@
 // Abläufe mit Discord-Auswirkungen: Posts, Rollen, Phasenwechsel.
 import { coIds, isCo } from "./co.mjs";
 import { get, set, del, mutate, keys, getConfig, getClubs, tKey } from "./store.mjs";
-import { sendFiles, sendMessage, editMessage, upsertMessage, sendWithFile, deleteMessage } from "./discord.mjs";
+import { discord, sendFiles, sendMessage, editMessage, upsertMessage, sendWithFile, deleteMessage } from "./discord.mjs";
 import { enqueue } from "./roles.mjs";
 import * as T from "./tournament.mjs";
 import * as V from "./views.mjs";
-import { DAYS, ROUND_ROLES, RULES_VERSION, flagOf } from "./data.mjs";
+import { isFreilos, DAYS, ROUND_ROLES, RULES_VERSION, flagOf } from "./data.mjs";
 import { viennaParts, viennaAt, shortDate, todayKey } from "./time.mjs";
 import { setNick, nickFor } from "./names.mjs";
 import { scheduleCleanup, purgeExcept } from "./cleanup.mjs";
@@ -139,8 +139,18 @@ export async function launchTournament({ channelId, name, times, day, date }, { 
     throw new Error(`Ich konnte in <#${channelId}> nichts posten – fehlen dem Bot dort Rechte?`);
   }
   t.msgs.panel = msg.id;
+  // 📣 Neue Anmeldeliste: Rolle „CW Member“ markieren (nicht beim Test-Cup)
+  if (!t.test) await pingCwMember(channelId, t).catch(() => {});
   await set(tKey(channelId), t);
   return t;
+}
+
+async function pingCwMember(channelId, t) {
+  const norm = (n) => String(n || "").normalize("NFKC").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const roles = (await discord(`/guilds/${process.env.CUP_GUILD_ID || process.env.GUILD_ID}/roles`)) || [];
+  const r = roles.find((x) => x.id === process.env.CUP_PING_ROLE_ID) || roles.find((x) => !x.managed && norm(x.name) === "cwmember") || roles.find((x) => !x.managed && norm(x.name).includes("cwmember"));
+  if (!r) return;
+  await sendMessage(channelId, { content: `<@&${r.id}> 📣 **Neue Anmeldeliste: ${V.esc(t.name)}** – jetzt anmelden! Anmeldeschluss um **${hhmm(t.times.close)} Uhr**.`, allowed_mentions: { roles: [r.id] } });
 }
 
 export async function refreshSignup(t) {
@@ -150,9 +160,9 @@ export async function refreshSignup(t) {
 }
 
 /** Zeiten aus dem Anpfiff: Anmeldeschluss/Auslosung 60 Min. vorher, Check-in-Ende 5 Min. vorher */
-// Anmeldeschluss 10 Min. vor Start, Check-in läuft bis 2 Min. vor Start
-export const CLOSE_BEFORE_MIN = 10, CHECKIN_END_BEFORE_MIN = 2;
-export const timesFromKickoff = (kickoff) => ({ close: kickoff - CLOSE_BEFORE_MIN * 60000, checkinEnd: kickoff - CHECKIN_END_BEFORE_MIN * 60000, kickoff });
+// Ablauf: Anmeldeschluss 10 Min. vor Start → Check-in im Anmelde-Post bis 5 Min. vorher → Auslosung 2 Min. vorher → Anpfiff
+export const CLOSE_BEFORE_MIN = 10, CHECKIN_END_BEFORE_MIN = 5, DRAW_BEFORE_MIN = 2;
+export const timesFromKickoff = (kickoff) => ({ close: kickoff - CLOSE_BEFORE_MIN * 60000, checkinEnd: kickoff - CHECKIN_END_BEFORE_MIN * 60000, draw: kickoff - DRAW_BEFORE_MIN * 60000, kickoff });
 
 /** Wochenplan: zur Posting-Zeit die Liste des Tages posten */
 export async function runSchedule(now = Date.now()) {
@@ -236,7 +246,7 @@ export async function doCheckinEnd(channelId) {
     ...result.forfeited.map((x) => `❌ **${t.league ? "Liga" : "Gruppe " + x.group}:** ${flagOf(x.club)} ${V.esc(x.club)} nicht eingecheckt – alle Spiele werden mit 0:3 gewertet.`),
   ];
   await refreshSignup(t);
-  await sendMessage(channelId, { content: `🔒 **Check-in beendet.** ${t.playing.length - t.out.length} Spieler sind dabei. Anpfiff um <t:${Math.floor(t.times.kickoff / 1000)}:t> – die Spielpläne stehen in euren Gruppenkanälen.${lines.length ? "\n\n" + lines.join("\n") : ""}` });
+  if (!t.times.draw) await sendMessage(channelId, { content: `🔒 **Check-in beendet.** ${t.playing.length - t.out.length} Spieler sind dabei. Anpfiff um <t:${Math.floor(t.times.kickoff / 1000)}:t> – die Spielpläne stehen in euren Gruppenkanälen.${lines.length ? "\n\n" + lines.join("\n") : ""}` });
   for (const g of t.groups) {
     const ch = cfg.channels["g" + g.name]; if (!ch) continue;
     await refreshGroupCheckin(t, g.name);
@@ -359,6 +369,7 @@ export function koKeyOf(t, m) {
 export const koChannelOf = (cfg, t, m) => cfg.channels[koKeyOf(t, m)] || cfg.channels.kor || cfg.channels.ko;
 /** Ergebnis-Kanal der Runde (z. B. „UT-Viertelfinale-Ergebnisse“), sonst der Runden-Kanal */
 export const koResultChannelOf = (cfg, t, m) => cfg.channels[koKeyOf(t, m) + "r"] || koChannelOf(cfg, t, m);
+const hhmm = (ms) => new Intl.DateTimeFormat("de-AT", { timeZone: "Europe/Vienna", hour: "2-digit", minute: "2-digit" }).format(new Date(ms));
 export const resultChannelOf = (cfg, m, t) => (m.phase === "gruppe" ? cfg.channels["r" + m.group] || cfg.channels["g" + m.group] : t ? koResultChannelOf(cfg, t, m) : cfg.channels.kor || cfg.channels.ko);
 
 /** Ergebnis-Panel im KO-Ergebniskanal: pro Runde neu posten (damit es unten steht), sonst aktualisieren */
@@ -596,8 +607,42 @@ export async function cancelTournament(channelId) {
   return t;
 }
 
+/** Anmeldeschluss → Check-in im Anmelde-Post (alle Angemeldeten werden markiert) */
+export async function doPreCheck(channelId) {
+  const { value: t } = await mutate(tKey(channelId), (x) => T.startPreCheck(x), { missing: "Turnier nicht gefunden." });
+  await refreshSignup(t);
+  const clubs = await getClubs();
+  const uids = [...new Set(t.reg.filter((c) => !isFreilos(c) && !t.virtual?.includes(c)).flatMap((c) => membersOf(clubs, c)))];
+  await sendMessage(channelId, { content: `🔒 **Anmeldeschluss!** ${uids.map((u) => `<@${u}>`).join(" ")}\n✅ **Jetzt einchecken** – oben in der Liste auf **Einchecken** klicken, bis **${hhmm(t.times.checkinEnd)} Uhr**. Wer nicht eincheckt, ist raus. Auslosung um **${hhmm(t.times.draw)} Uhr**.`, allowed_mentions: { users: uids.slice(0, 100) } });
+  return t;
+}
+
+/** Check-in-Ende → Nicht-Eingecheckte raus, gleich danach Auslosung */
+export async function doPreCheckEnd(channelId) {
+  const { value: t, result } = await mutate(tKey(channelId), (x) => T.finishPreCheck(x), { missing: "Turnier nicht gefunden." });
+  await refreshSignup(t);
+  await sendMessage(channelId, { content: `⏱️ **Check-in beendet.** ${t.reg.length} ${t.reg.length === 1 ? "Spieler ist" : "Spieler sind"} dabei.${result.out.length ? ` Nicht eingecheckt (raus): ${result.out.map((c) => `**${V.esc(c)}**`).join(", ")}.` : ""} Auslosung um **${hhmm(t.times.draw)} Uhr**.` });
+  return t;
+}
+
+/** Auslosung 2 Min. vor Start – alle sind schon eingecheckt, daher direkt startklar */
+export async function doDrawAndStart(channelId) {
+  const t0 = await doDraw(channelId);
+  if (!t0 || t0.status !== "checkin") return t0;
+  await mutate(tKey(channelId), (x) => { x.checked = [...x.playing]; x.waitChecked = [...x.wait]; });
+  return doCheckinEnd(channelId);
+}
+
 /** Zeitgesteuerte Schritte eines Turniers (vom Timer jede Minute aufgerufen) */
 export async function runTimers(t, now = Date.now()) {
+  if (t.times.draw) {
+    // Neuer Ablauf: Check-in vor der Auslosung
+    if (t.status === "anmeldung" && now >= t.times.close) return doPreCheck(t.channelId);
+    if (t.status === "vorcheck" && now >= t.times.checkinEnd) return doPreCheckEnd(t.channelId);
+    if (t.status === "auslosung" && now >= t.times.draw) return doDrawAndStart(t.channelId);
+    if (t.status === "gruppen" && !t.kickoffDone && now >= t.times.kickoff) return doKickoff(t.channelId);
+    return;
+  }
   if (t.status === "anmeldung" && now >= t.times.close) return doDraw(t.channelId);
   if (t.status === "checkin" && now >= t.times.checkinEnd) return doCheckinEnd(t.channelId);
   if (t.status === "gruppen" && !t.kickoffDone && now >= t.times.kickoff) return doKickoff(t.channelId);

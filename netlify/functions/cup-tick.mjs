@@ -19,7 +19,7 @@ export default async () => {
   await step("Einrichtung", () => processSetupJobs(9000));
   await step("Wochenplan", () => runSchedule());
   await step("Turniere", async () => {
-    for (const t of await allTournaments()) if (["anmeldung", "checkin", "gruppen"].includes(t.status)) await step(`Turnier ${t.channelId}`, () => runTimers(t));
+    for (const t of await allTournaments()) if (["anmeldung", "vorcheck", "auslosung", "checkin", "gruppen"].includes(t.status)) await step(`Turnier ${t.channelId}`, () => runTimers(t));
   });
   await step("Ergebnisse automatisch bestätigen", () => runAutoConfirm());
   await step("Test-Cup", async () => { const F = await import("../cup/flow.mjs"); const t = await F.activeTournament(); if (t?.test) await F.playVirtualMatches(t.channelId); });

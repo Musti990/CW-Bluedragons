@@ -103,6 +103,11 @@ exports.handler = async () => {
   });
 
   commands.push({
+    name: 'serverkontaktpersonen',
+    description: 'Postet die offiziellen Server-Kontaktpersonen (bearbeitbar) – nur Admins',
+  });
+
+  commands.push({
     name: 'latenight-einrichten',
     description: 'Legt die Kategorie Late Night an (LNC-Call, Latenight-Chat, Latenight-Abstimmung) – nur Admins',
   });

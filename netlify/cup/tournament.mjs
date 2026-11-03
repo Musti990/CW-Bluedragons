@@ -69,7 +69,7 @@ export function roundRobin(ids) {
 
 /** Schließt die Anmeldung, wählt das Format und lost die Gruppen aus. */
 export function closeAndDraw(t) {
-  if (t.status !== "anmeldung") throw new Error("Die Anmeldung ist schon geschlossen.");
+  if (!["anmeldung", "vorcheck", "auslosung"].includes(t.status)) throw new Error("Die Anmeldung ist schon geschlossen.");
   const f = fmtOf(t.reg.length);
   if (!f) { t.status = "abgesagt"; return { cancelled: true }; }
   t.fmt = f;
@@ -126,6 +126,29 @@ export const groupLabel = (t, g) => (t.league ? "Liga" : `Gruppe ${typeof g === 
 export const groupOf = (t, clubName) => t.groups.find((g) => g.teams.includes(clubName))?.name ?? null;
 
 // ---------- Check-in ----------
+// ---------- Check-in VOR der Auslosung (im Anmelde-Post) ----------
+/** Anmeldeschluss: Liste zu, jetzt einchecken (Freilose und Testspieler sind automatisch eingecheckt) */
+export function startPreCheck(t) {
+  if (t.status !== "anmeldung") throw new Error("Die Anmeldung ist schon geschlossen.");
+  t.status = "vorcheck";
+  t.pre = t.reg.filter((c) => isFreilos(c) || t.virtual?.includes(c));
+}
+export function preCheckIn(t, clubName) {
+  if (t.status !== "vorcheck") throw new Error("Der Check-in ist gerade nicht offen.");
+  if (!t.reg.includes(clubName)) throw new Error("Du bist für diesen Cup nicht angemeldet.");
+  t.pre = t.pre || [];
+  if (t.pre.includes(clubName)) throw new Error("Du bist bereits eingecheckt.");
+  t.pre.push(clubName);
+}
+/** Check-in-Ende: wer nicht eingecheckt hat, fliegt raus – danach kommt die Auslosung */
+export function finishPreCheck(t) {
+  if (t.status !== "vorcheck") throw new Error("Der Check-in ist gerade nicht offen.");
+  const out = t.reg.filter((c) => !(t.pre || []).includes(c));
+  t.reg = t.reg.filter((c) => (t.pre || []).includes(c));
+  t.status = "auslosung";
+  return { out };
+}
+
 export function checkIn(t, clubName) {
   if (t.status !== "checkin") throw new Error("Der Check-in ist gerade nicht offen.");
   if (t.playing.includes(clubName)) {

@@ -255,6 +255,8 @@ function formatBlock(n, closed, mode) {
 
 const STATUS = {
   anmeldung: "🟢 **Anmeldung offen**",
+  vorcheck: "✅ **Anmeldung geschlossen – jetzt einchecken!**",
+  auslosung: "🎲 **Check-in beendet – gleich wird ausgelost**",
   checkin: "🟡 **Check-in läuft** in den Gruppenkanälen",
   gruppen: "⚽ **Gruppen-/Ligaphase läuft**",
   ko: "🔥 **K.-o.-Phase läuft**",
@@ -274,7 +276,7 @@ export function signupPanel(t, clubs = {}) {
   const who = (c) => (clubs[c]?.manager ? ` | <@${clubs[c].manager}>` : "");
   const tl = (c, k, waitList) => isFreilos(c)
     ? `${num(k)} 🎟️ **Freilos**`
-    : `${num(k)} ${flagOf(c)} **${esc(c)}**${who(c)}${t.status === "checkin" && waitList ? (t.waitChecked.includes(c) ? " ✅" : " ⏳") : ""}`;
+    : `${num(k)} ${flagOf(c)} **${esc(c)}**${who(c)}${t.status === "vorcheck" ? ((t.pre || []).includes(c) ? " ✅" : " ⏳") : ""}${t.status === "checkin" && waitList ? (t.waitChecked.includes(c) ? " ✅" : " ⏳") : ""}`;
   const freeCount = playing.filter(isFreilos).length;
   const target = f || 8;
   const times = t.times;
@@ -291,6 +293,7 @@ export function signupPanel(t, clubs = {}) {
   const buttons = [];
   if (t.status === "anmeldung") buttons.push(row(btn("Anmelden", "cup_join", 1, { emoji: { name: "⭐" } }), btn("Abmelden", "cup_leave")));
   if (t.status === "checkin" && t.wait.length) buttons.push(row(btn("Warteliste: Einchecken", "cup_waitci", 3, { emoji: { name: "✅" } })));
+  if (t.status === "vorcheck") buttons.push(row(btn("Einchecken", "cup_preci", 3, { emoji: { name: "✅" } })));
   return {
     flags: V2,
     components: [box(
@@ -299,7 +302,7 @@ export function signupPanel(t, clubs = {}) {
       line(),
       txt(formatBlock(closed ? t.playing.length || n : n, closed, t.mode).replace(/^\*\*🏟️ Format: (\d+)er\*\*/, "### 🏟️ Turnierplan: $1er-Format").replace(/^\*\*⚠️ Noch kein Format\*\*/, "### ⚠️ Noch kein Format")),
       line(),
-      txt(`### ⏰ Ablauf\n${hhmm(times.close)} Anmeldeschluss · ${hhmm(times.close)} Auslosung · ${hhmm(times.checkinEnd)} Check-in-Ende · ${hhmm(times.kickoff)} Anpfiff`),
+      txt(`### ⏰ Ablauf\n${times.draw ? `${hhmm(times.close)} Anmeldeschluss · bis ${hhmm(times.checkinEnd)} Check-in · ${hhmm(times.draw)} Auslosung · ${hhmm(times.kickoff)} ` : `${hhmm(times.close)} Anmeldeschluss · ${hhmm(times.close)} Auslosung · ${hhmm(times.checkinEnd)} Check-in-Ende · ${hhmm(times.kickoff)} `}Anpfiff`),
       line(),
       txt(teamsText.slice(0, 3000)),
       ...(buttons.length ? [line(false), ...buttons] : []),
@@ -320,7 +323,7 @@ export function drawPost(t) {
   }
   const rule = d.top === 1 ? `alle Gruppensieger + ${d.ex} beste Zweite` : `Erste und Zweite${d.ex ? ` + ${d.ex} beste Dritte` : ""}`;
   return {
-    content: `🔒 **Anmeldung geschlossen – ${t.fmt}er-Format.** Check-in läuft jetzt bis ${hhmm(t.times.checkinEnd)} in eurem Gruppenkanal.${t.wait.length ? ` ${t.wait.length} ${t.wait.length === 1 ? "Spieler steht" : "Spieler stehen"} auf der Warteliste und checkt oben im Anmelde-Post ein.` : ""}`,
+    content: t.times.draw ? `🎲 **Ausgelost – ${t.fmt}er-Format.** Anpfiff um ${hhmm(t.times.kickoff)} – Gruppen und Spielpläne stehen in euren Gruppenkanälen.` : `🔒 **Anmeldung geschlossen – ${t.fmt}er-Format.** Check-in läuft jetzt bis ${hhmm(t.times.checkinEnd)} in eurem Gruppenkanal.${t.wait.length ? ` ${t.wait.length} ${t.wait.length === 1 ? "Spieler steht" : "Spieler stehen"} auf der Warteliste und checkt oben im Anmelde-Post ein.` : ""}`,
     embeds: [{ color: COLOR, title: `⭐ Auslosung · ${t.fmt}er-Format`, fields: t.groups.map((g) => ({ name: `Gruppe ${g.name}`, value: g.teams.map((c) => `${flagOf(c)} ${esc(c)}`).join("\n"), inline: true })), description: `**Weiter ins ${KO_NAME[KO_SIZE[t.fmt]]}:** ${rule}` }],
   };
 }

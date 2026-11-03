@@ -1298,7 +1298,7 @@ async function handleTicketModal(interaction) {
 }
 
 // Was gehört zum Zusagen-Bot? Alles andere (Befehle /ut-…, Cup-Buttons) gehört zum Ultimate Team Cup.
-const BD_PREFIXES = ['sched:', 'poll:', 'srules:', 'bdp:', 'genrole:', 'kader:', 'lineup:', 'posnick:', 'posrole:', 'ticket:', 'ticketform:', 'rsvp:'];
+const BD_PREFIXES = ['contact:', 'sched:', 'poll:', 'srules:', 'bdp:', 'genrole:', 'kader:', 'lineup:', 'posnick:', 'posrole:', 'ticket:', 'ticketform:', 'rsvp:'];
 function isCupInteraction(i) {
   if (i.type === 2 || i.type === 4) return String(i.data?.name || '').startsWith('ut-');
   if (i.type === 3 || i.type === 5) {
@@ -1766,6 +1766,37 @@ exports.handler = async (event) => {
     const { already, roleOk } = await require('./lib/server-rules').accept(interaction.member?.user?.id, interaction.guild_id);
     if (!roleOk) return ephemeral('✅ Regeln akzeptiert – ⚠️ die Rolle „Verifiziert“ konnte aber nicht vergeben werden. Bitte melde dich bei einem Admin.');
     return ephemeral(already ? '✅ Du hast die Regeln bereits akzeptiert.' : '✅ **Danke!** Du hast die Server-Regeln akzeptiert – die **Rollenauswahl** ist jetzt für dich freigeschaltet.');
+  }
+
+  if (interaction.type === 2 && interaction.data?.name === 'serverkontaktpersonen') {
+    if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können das posten.');
+    try { await require('./lib/contacts').post(interaction.guild_id, interaction.channel_id); }
+    catch (e) { return ephemeral('⚠️ ' + e.message); }
+    return ephemeral('✅ Kontaktpersonen gepostet. Mit **✏️ Bearbeiten** darunter kannst du jeden Abschnitt ändern – Namen mit **@** davor (z. B. `@Robii92`) werden automatisch verlinkt.');
+  }
+
+  if ((interaction.type === 3 || interaction.type === 5) && String(interaction.data?.custom_id || '').startsWith('contact:')) {
+    if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können die Kontaktpersonen bearbeiten.');
+    const C = require('./lib/contacts');
+    const id = interaction.data.custom_id;
+    const st = await C.getState();
+    if (id === 'contact:edit') {
+      return ephemeral('**✏️ Welchen Abschnitt willst du bearbeiten?**', { components: [{ type: 1, components: [{ type: 3, custom_id: 'contact:pick', placeholder: 'Abschnitt wählen…', options: st.sections.map((x) => ({ label: x.title.replace(/[^\p{L}\p{N} &–-]/gu, '').trim().slice(0, 100) || x.key, value: x.key })) }] }] });
+    }
+    if (id === 'contact:pick') {
+      const sec = st.sections.find((x) => x.key === interaction.data.values?.[0]);
+      if (!sec) return ephemeral('Diesen Abschnitt gibt es nicht.');
+      return json(200, { type: 9, data: { custom_id: `contact:save:${sec.key}`, title: 'Abschnitt bearbeiten', components: [
+        { type: 1, components: [{ type: 4, custom_id: 'title', style: 1, label: 'Überschrift', required: true, max_length: 256, value: sec.title }] },
+        { type: 1, components: [{ type: 4, custom_id: 'body', style: 2, label: 'Text (@Name = Verlinkung)', required: true, max_length: 4000, value: C.unlink(sec.body, st.links) }] },
+      ] } });
+    }
+    if (id.startsWith('contact:save:')) {
+      const v = (cid) => { for (const r of interaction.data.components || []) for (const c of r.components || []) if (c.custom_id === cid) return String(c.value || ''); return ''; };
+      try { await C.update(interaction.guild_id, id.split(':')[2], v('title').trim(), v('body').trim()); } catch (e) { return ephemeral('⚠️ ' + e.message); }
+      return ephemeral('✅ Gespeichert – die Kontaktpersonen sind aktualisiert.');
+    }
+    return ephemeral('Unbekannte Aktion.');
   }
 
   if (interaction.type === 2 && interaction.data?.name === 'latenight-einrichten') {
