@@ -42,7 +42,7 @@ exports.handler = async () => {
     },
     {
       name: 'rolle',
-      description: 'Postet die Rollenwahl (Aushilfe, Tester, Late Night, ProClubs, FUT)',
+      description: 'Postet die Rollenwahl (Aushilfe, Late Night, ProClubs, FUT)',
     },
     {
       name: 'kader',
@@ -124,12 +124,13 @@ exports.handler = async () => {
 
   commands.push({
     name: 'panel',
-    description: 'Postet ein Bedien-Panel in diesen Kanal (Session, Aufstellung, Event, Transfers) – nur Admins',
+    description: 'Postet ein Bedien-Panel (Session, Aufstellung, Event, Transfers, Tester) – nur Admins',
     options: [{ name: 'typ', description: 'Welches Panel?', type: 3, required: true, choices: [
       { name: 'Session (Spielberichte starten/beenden)', value: 'session' },
       { name: 'Aufstellung', value: 'aufstellung' },
       { name: 'Event & anonyme Umfrage', value: 'event' },
       { name: 'Transfers', value: 'transfers' },
+      { name: 'Tester-Bewerbung (roter Button)', value: 'tester' },
     ] }],
   });
 

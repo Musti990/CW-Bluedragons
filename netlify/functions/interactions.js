@@ -203,6 +203,19 @@ async function handleAufstellungVorschlagCommand(interaction) {
 // -> jetzt alle in ./lib/event-core.js, hier oben importiert
 
 // ---------- Slash-Command /event ----------
+/** Wer bei Events/Abstimmungen markiert wird: Dragons Spieler, Dragons Tester, Aushilfe, Late Night (nie VM-/Bot-Rollen) */
+async function eventPingRoles(guildId) {
+  try {
+    const res = await fetch(`https://discord.com/api/v10/guilds/${guildId}/roles`, { headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}` } });
+    const roles = res.ok ? await res.json() : [];
+    const n = (x) => String(x || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const ok = (r) => r && !r.managed && !n(r.name).includes('vm');
+    const fixed = String(process.env.EVENT_PING_ROLE_IDS || '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (fixed.length) return roles.filter((r) => fixed.includes(r.id));
+    return ['dragonsspieler', 'dragonstester', 'aushilfe', 'latenight'].map((k) => roles.find((r) => ok(r) && n(r.name) === k) || roles.find((r) => ok(r) && n(r.name).includes(k))).filter(Boolean);
+  } catch { return []; }
+}
+
 async function handleCreateEvent(interaction, store, { postToChannel = false } = {}) {
   const opts = {};
   for (const o of interaction.data.options || []) opts[o.name] = o.value;
@@ -250,7 +263,7 @@ async function handleCreateEvent(interaction, store, { postToChannel = false } =
     const res = await fetch(`https://discord.com/api/v10/channels/${ev.channelId}/messages`, {
       method: 'POST',
       headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [await buildEmbed(ev)], components: buildComponents(eventId) }),
+      body: JSON.stringify({ ...(await pingPayload(interaction.guild_id)), embeds: [await buildEmbed(ev)], components: buildComponents(eventId) }),
     });
     if (!res.ok) { await store.delete(eventId); return ephemeral('⚠️ Konnte hier nicht posten – der Bot braucht „Nachrichten senden“ und „Links einbetten“.'); }
     ev.messageId = (await res.json()).id;
@@ -279,8 +292,13 @@ async function handleCreateEvent(interaction, store, { postToChannel = false } =
 
   return json(200, {
     type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
-    data: { embeds: [await buildEmbed(ev)], components: buildComponents(eventId) },
+    data: { ...(await pingPayload(interaction.guild_id)), embeds: [await buildEmbed(ev)], components: buildComponents(eventId) },
   });
+}
+
+async function pingPayload(guildId) {
+  const roles = await eventPingRoles(guildId);
+  return roles.length ? { content: roles.map((r) => `<@&${r.id}>`).join(' '), allowed_mentions: { roles: roles.map((r) => r.id) } } : {};
 }
 
 // ---------- Button-Klick ----------
@@ -472,18 +490,17 @@ async function handlePositionNickButton(interaction) {
 // label = Text auf Button und im Embed, style: 1 blau, 2 grau, 3 grün, 4 rot, row = Button-Reihe
 const GENERAL_ROLES = [
   { name: 'Aushilfe', label: 'Aushilfe', tag: 'Aushilfe', emoji: '🤝', style: 3, row: 0 },
-  { name: 'Dragons Tester', label: 'Tester', tag: 'Tester', emoji: '🧪', style: 1, row: 0 }, // Rolle auf dem Server: „Dragons Tester“ – im Namen: „Name | Tester“
   { name: 'Late Night Spieler', label: 'Late Night', tag: null, emoji: '🌙', style: 2, row: 0 },
   { name: 'ProClubs Member', label: 'ProClubs Member', tag: null, emoji: '🎮', style: 1, row: 1 },
   { name: 'FUT Member', label: 'FUT Member', tag: null, emoji: '🃏', style: 1, row: 1 },
 ];
-const ROLE_TAGS = GENERAL_ROLES.map((r) => r.tag).filter(Boolean);
+const ROLE_TAGS = [...GENERAL_ROLES.map((r) => r.tag), 'Tester'].filter(Boolean);
 // Tester-Rolle tolerant erkennen: „Dragons Tester“ (aktuell) oder „Tester“ (alt) – Schrift/Emojis egal
 const normRoleName = (n) => String(n || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
 const isTesterName = (n) => ['dragonstester', 'tester'].includes(normRoleName(n));
 const findTesterRole = (roles) => roles.find((r) => !r.managed && normRoleName(r.name) === 'dragonstester') || roles.find((r) => !r.managed && normRoleName(r.name) === 'tester');
 /** Welcher Namens-Zusatz gilt bei diesen Rollen? (Server-Namen tolerant vergleichen) */
-const tagWinner = (heldNames) => GENERAL_ROLES.find((g) => g.tag && [...heldNames].some((h) => normRoleName(h) === normRoleName(g.name) || (isTesterName(g.name) && isTesterName(h))));
+const tagWinner = (heldNames) => [...GENERAL_ROLES, TESTER_ROLE].find((g) => g.tag && [...heldNames].some((h) => normRoleName(h) === normRoleName(g.name) || (isTesterName(g.name) && isTesterName(h))));
 
 // Nickname zerlegen: "Musti | BD Spieler | HP:ZDM | NP: IV" -> { base, tag, HP, NP }
 function parseNick(nick) {
@@ -1240,7 +1257,7 @@ async function handleTicketButton(interaction) {
     held.add(role.id);
     const heldNames = new Set(roles.filter((r) => held.has(r.id)).map((r) => r.name));
     // Name: Tester hat Vorrang → „Name | Tester“
-    const winner = GENERAL_ROLES.find((r) => isTesterName(r.name)) || tagWinner(heldNames);
+    const winner = TESTER_ROLE;
     const parsed = parseNick(m.nick || m.user?.global_name || m.user?.username);
     parsed.tag = winner ? winner.tag : null;
     await setNick(guildId, applicantId, buildNick(parsed));
@@ -1397,6 +1414,22 @@ function eventPanel() {
   };
 }
 
+// Eigenes Panel nur für die Tester-Bewerbung (roter Button → öffnet das Ticket)
+const TESTER_ROLE = { name: 'Dragons Tester', label: 'Tester', tag: 'Tester' };
+function testerPanel() {
+  return {
+    embeds: [{
+      color: 0xda373c,
+      title: '🧪 DU WILLST UNSEREM TEAM BEITRETEN?',
+      description: '**Dann bist du hier genau richtig!** 🐉\n\n👇 Klick unten auf den **roten Button „Tester werden“**.\nEs öffnet sich ein **privates Ticket** – dort füllst du kurz dein **Infoblatt** aus.\n\nUnser Team-Management schaut sich dein Profil an und meldet sich bei dir. 💙',
+      fields: [{ name: '📌 Wichtig', value: '• Ohne ausgefülltes Infoblatt wird deine Bewerbung **nicht** bearbeitet\n• Pro Person nur **ein** offenes Ticket' }],
+      thumbnail: { url: `${process.env.URL}/blue-dragons-logo.png` },
+      footer: { text: 'CW BlueDragons · United by Blue Fire' },
+    }],
+    components: [{ type: 1, components: [{ type: 2, style: 4, label: 'Tester werden', emoji: { name: '🧪' }, custom_id: 'genrole:Dragons Tester' }] }],
+  };
+}
+
 function transferPanel() {
   return {
     embeds: [{
@@ -1432,7 +1465,7 @@ function lineupPanel() {
 async function handlePanelCommand(interaction) {
   if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können Panels posten.');
   const typ = (interaction.data.options || []).find((o) => o.name === 'typ')?.value;
-  const panel = typ === 'aufstellung' ? lineupPanel() : typ === 'event' ? eventPanel() : typ === 'transfers' ? transferPanel() : sessionPanel();
+  const panel = typ === 'aufstellung' ? lineupPanel() : typ === 'event' ? eventPanel() : typ === 'transfers' ? transferPanel() : typ === 'tester' ? testerPanel() : sessionPanel();
   return json(200, { type: 4, data: panel });
 }
 

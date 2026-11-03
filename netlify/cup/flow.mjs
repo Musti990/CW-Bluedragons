@@ -150,7 +150,9 @@ export async function refreshSignup(t) {
 }
 
 /** Zeiten aus dem Anpfiff: Anmeldeschluss/Auslosung 60 Min. vorher, Check-in-Ende 5 Min. vorher */
-export const timesFromKickoff = (kickoff) => ({ close: kickoff - 60 * 60000, checkinEnd: kickoff - 5 * 60000, kickoff });
+// Anmeldeschluss 10 Min. vor Start, Check-in läuft bis 2 Min. vor Start
+export const CLOSE_BEFORE_MIN = 10, CHECKIN_END_BEFORE_MIN = 2;
+export const timesFromKickoff = (kickoff) => ({ close: kickoff - CLOSE_BEFORE_MIN * 60000, checkinEnd: kickoff - CHECKIN_END_BEFORE_MIN * 60000, kickoff });
 
 /** Wochenplan: zur Posting-Zeit die Liste des Tages posten */
 export async function runSchedule(now = Date.now()) {
