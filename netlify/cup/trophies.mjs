@@ -4,7 +4,7 @@ import { get, mutate, getConfig, getClubs } from "./store.mjs";
 import { upsertMessage } from "./discord.mjs";
 import { isFreilos, flagOf } from "./data.mjs";
 import { winner } from "./tournament.mjs";
-import { shortDate } from "./time.mjs";
+import { shortDate, viennaParts } from "./time.mjs";
 
 const blank = () => ({ g: 0, s: 0, b: 0, cups: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 });
 const init = () => ({ cups: 0, goals: 0, clubs: {}, managers: {}, records: {}, last: [] });
@@ -13,7 +13,8 @@ const init = () => ({ cups: 0, goals: 0, clubs: {}, managers: {}, records: {}, l
 export async function recordCup(t) {
   const [gold, silver, bronze] = t.podium || [];
   const people = (c) => (t.members?.[c] || []).filter(Boolean);
-  const date = shortDate(t.times?.kickoff || Date.now());
+  const vp = viennaParts(t.times?.kickoff || Date.now());
+  const date = `${shortDate(vp.mo, vp.d)}${vp.y}`; // z. B. 02.11.2026
   await mutate("stats", (S) => {
     Object.assign(S, { ...init(), ...S });
     S.cups++;
@@ -61,8 +62,8 @@ export function trophyPanel(S, clubs = {}, site = "") {
   const mgrRows = Object.entries(S.managers).filter(([, x]) => x.g || x.s || x.b).sort((a, b) => rank(a[1], b[1])).slice(0, 5)
     .map(([u, x], k) => `${["🥇", "🥈", "🥉", "4️⃣", "5️⃣"][k]} <@${u}> · **${x.g} Titel** · ${x.s}× Finale · ${x.b}× Platz 3`);
   const R = S.records, rec = [];
-  if (R.mostGoals) rec.push(`⚽ **Meiste Tore in einem Cup:** ${flagOf(R.mostGoals.club)} ${esc(R.mostGoals.club)} · ${R.mostGoals.n} Tore (${R.mostGoals.date})`);
-  if (R.biggestWin) rec.push(`💥 **Höchster Sieg:** ${flagOf(R.biggestWin.home)} ${esc(R.biggestWin.home)} ${R.biggestWin.h}:${R.biggestWin.a} ${esc(R.biggestWin.away)} ${flagOf(R.biggestWin.away)} (${R.biggestWin.date})`);
+  if (R.mostGoals) rec.push(`⚽ **Meiste Tore in einem Cup:** ${flagOf(R.mostGoals.club)} ${esc(R.mostGoals.club)} · ${R.mostGoals.n} Tore ${okDate(R.mostGoals.date)}`);
+  if (R.biggestWin) rec.push(`💥 **Höchster Sieg:** ${flagOf(R.biggestWin.home)} ${esc(R.biggestWin.home)} ${R.biggestWin.h}:${R.biggestWin.a} ${esc(R.biggestWin.away)} ${flagOf(R.biggestWin.away)} ${okDate(R.biggestWin.date)}`);
   if (R.streak && R.streak.n > 1) rec.push(`🔥 **Titel in Folge:** ${flagOf(R.streak.club)} ${esc(R.streak.club)} · ${R.streak.n}× (${R.streak.from} – ${R.streak.to})`);
   const most = Object.entries(S.clubs).sort((a, b) => b[1].cups - a[1].cups)[0];
   if (most) rec.push(`🎯 **Meiste Cups gespielt:** ${flagOf(most[0])} ${esc(most[0])} · ${most[1].cups}`);
@@ -100,6 +101,8 @@ export async function myStats(uid) {
   const vit = "🏆".repeat(Math.min(x.g, 15)) + (x.s ? " " + "🥈".repeat(Math.min(x.s, 15)) : "") + (x.b ? " " + "🥉".repeat(Math.min(x.b, 15)) : "");
   return `📊 **Deine Statistik**\n\n${now}🏆 **${x.g} Titel**${by ? ` (${by})` : ""} · 🥈 ${x.s} Finals · 🥉 ${x.b}× Platz 3\n🎮 **${x.cups} ${x.cups === 1 ? "Cup" : "Cups"}** · ${games} Spiele · ${x.w} S · ${x.d} U · ${x.l} N\n⚽ ${x.gf}:${x.ga} Tore · TD ${td > 0 ? "+" + td : td}${games ? ` · Ø ${(x.gf / games).toFixed(1).replace(".", ",")} Tore pro Spiel` : ""}\n\n🏅 **Deine Vitrine:** ${vit || "noch leer"}`;
 }
+
+const okDate = (d) => (d && !String(d).includes("undefined") ? ` (${d})` : "");
 
 export async function refreshTrophyPanel() {
   const cfg = await getConfig(); const ch = cfg.channels?.trophy; if (!ch) return;

@@ -126,6 +126,48 @@ export const groupLabel = (t, g) => (t.league ? "Liga" : `Gruppe ${typeof g === 
 export const groupOf = (t, clubName) => t.groups.find((g) => g.teams.includes(clubName))?.name ?? null;
 
 // ---------- Check-in ----------
+// ---------- Admin: Teilnehmer verwalten ----------
+const BEFORE_DRAW = ["anmeldung", "vorcheck", "auslosung"];
+/** Teilnehmer hinzufügen (nur vor der Auslosung) – im Check-in gleich als eingecheckt */
+export function adminAdd(t, club) {
+  if (!BEFORE_DRAW.includes(t.status)) throw new Error("Der Cup ist schon ausgelost – nutze **Ersetzen**.");
+  if (t.reg.includes(club)) throw new Error(`**${club}** ist schon angemeldet.`);
+  t.reg.push(club);
+  if (t.status !== "anmeldung") (t.pre ||= []).push(club);
+}
+/** Teilnehmer entfernen: vor der Auslosung aus der Liste, danach kampflos (alle offenen Spiele 0:3) */
+export function adminRemove(t, club) {
+  if (BEFORE_DRAW.includes(t.status)) {
+    if (!t.reg.includes(club)) throw new Error(`**${club}** ist nicht angemeldet.`);
+    t.reg = t.reg.filter((c) => c !== club); t.pre = (t.pre || []).filter((c) => c !== club);
+    return { mode: "liste" };
+  }
+  if (!(t.playing || []).includes(club)) throw new Error(`**${club}** spielt in diesem Cup nicht mit.`);
+  if (t.out.includes(club)) throw new Error(`**${club}** ist schon raus.`);
+  t.out.push(club);
+  let n = 0;
+  for (const m of t.matches) {
+    if (m.status === "fertig" || (m.home !== club && m.away !== club)) continue;
+    if (m.phase === "ko" && m.round !== t.koRound) continue;
+    Object.assign(m, { h: m.home === club ? 0 : 3, a: m.home === club ? 3 : 0, pen: null, status: "fertig", ff: true });
+    n++;
+  }
+  return { mode: "kampflos", games: n };
+}
+/** Teilnehmer ersetzen (überall: Liste, Gruppe, alle Spiele) – bestehende Ergebnisse bleiben */
+export function adminReplace(t, oldClub, newClub) {
+  if (oldClub === newClub) throw new Error("Alt und neu sind gleich.");
+  const inCup = [...(t.reg || []), ...(t.playing || [])];
+  if (!inCup.includes(oldClub)) throw new Error(`**${oldClub}** ist in diesem Cup nicht dabei.`);
+  if (inCup.includes(newClub)) throw new Error(`**${newClub}** ist schon dabei.`);
+  const sw = (arr) => (Array.isArray(arr) ? arr.map((c) => (c === oldClub ? newClub : c)) : arr);
+  for (const k of ["reg", "pre", "playing", "checked", "wait", "waitChecked", "out"]) t[k] = sw(t[k]);
+  for (const g of t.groups || []) g.teams = sw(g.teams);
+  for (const m of t.matches || []) { if (m.home === oldClub) m.home = newClub; if (m.away === oldClub) m.away = newClub; }
+  if (t.podium) t.podium = sw(t.podium);
+  return { group: (t.groups || []).find((g) => g.teams.includes(newClub))?.name || null };
+}
+
 // ---------- Check-in VOR der Auslosung (im Anmelde-Post) ----------
 /** Anmeldeschluss: Liste zu, jetzt einchecken (Freilose und Testspieler sind automatisch eingecheckt) */
 export function startPreCheck(t) {

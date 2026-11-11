@@ -110,7 +110,7 @@ export async function activeTournament() {
 export async function currentCup() {
   const a = await activeTournament();
   if (a && !["fertig", "abgesagt", "geloescht"].includes(a.status)) return a;
-  const open = (await allTournaments()).filter((t) => t.status === "anmeldung").sort((x, y) => (x.times?.kickoff || 0) - (y.times?.kickoff || 0));
+  const open = (await allTournaments()).filter((t) => ["anmeldung", "vorcheck", "auslosung"].includes(t.status)).sort((x, y) => (x.times?.kickoff || 0) - (y.times?.kickoff || 0));
   return open[0] || null;
 }
 
@@ -131,6 +131,8 @@ export async function launchTournament({ channelId, name, times, day, date }, { 
   const lockKey = `launch:${channelId}:${times.kickoff}`;
   const { result: got } = await mutate("launchlocks", (l) => { const now = Date.now(); for (const [k, at] of Object.entries(l)) if (now - at > 10 * 60000) delete l[k]; if (l[lockKey]) return false; l[lockKey] = now; return true; }, { initial: {} });
   if (!got) { const cur = await get(tKey(channelId)); if (cur) return cur; throw new Error("Die Liste wird gerade schon gepostet."); }
+  const cupTimes = (await getConfig()).cupTimes;
+  if (cupTimes && times?.kickoff) times = timesFromKickoff(times.kickoff, cupTimes);
   const t = T.createTournament({ channelId, name, times, day, date });
   t.mode = (await getConfig()).cupMode || "auto"; // Gruppen oder Liga – im Admin-Panel wählbar
   const msg = await sendMessage(channelId, V.signupPanel(t, await getClubs()));
@@ -162,7 +164,16 @@ export async function refreshSignup(t) {
 /** Zeiten aus dem Anpfiff: Anmeldeschluss/Auslosung 60 Min. vorher, Check-in-Ende 5 Min. vorher */
 // Ablauf: Anmeldeschluss 10 Min. vor Start → Check-in im Anmelde-Post bis 5 Min. vorher → Auslosung 2 Min. vorher → Anpfiff
 export const CLOSE_BEFORE_MIN = 10, CHECKIN_END_BEFORE_MIN = 5, DRAW_BEFORE_MIN = 2;
-export const timesFromKickoff = (kickoff) => ({ close: kickoff - CLOSE_BEFORE_MIN * 60000, checkinEnd: kickoff - CHECKIN_END_BEFORE_MIN * 60000, draw: kickoff - DRAW_BEFORE_MIN * 60000, kickoff });
+export const timesFromKickoff = (kickoff, m = {}) => {
+  const close = m.close ?? CLOSE_BEFORE_MIN, ci = m.checkin ?? CHECKIN_END_BEFORE_MIN, draw = m.draw ?? DRAW_BEFORE_MIN;
+  return { close: kickoff - close * 60000, checkinEnd: kickoff - ci * 60000, draw: kickoff - draw * 60000, kickoff };
+};
+/** Eigene Zeiten aus dem Admin-Panel (Minuten vor Start) – prüfen */
+export function checkMinutes({ close, checkin, draw }) {
+  if (![close, checkin, draw].every((x) => Number.isInteger(x) && x >= 0 && x <= 24 * 60)) throw new Error("Bitte ganze Minuten (0–1440) eintragen.");
+  if (!(close > checkin && checkin >= draw)) throw new Error("Reihenfolge muss stimmen: Anmeldeschluss > Check-in-Ende ≥ Auslosung (alles in Minuten **vor** Start).");
+  return { close, checkin, draw };
+}
 
 /** Wochenplan: zur Posting-Zeit die Liste des Tages posten */
 export async function runSchedule(now = Date.now()) {

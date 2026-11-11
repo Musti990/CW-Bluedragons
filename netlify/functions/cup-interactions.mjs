@@ -69,8 +69,23 @@ async function adminPanelAction(i, context, cfg, act) {
   later(context, () => F.refreshAdminPanel());
   const needSignup = () => { if (!t || !["anmeldung", "vorcheck", "auslosung"].includes(t.status)) throw new Error("Gerade ist keine Anmeldung offen."); return t.channelId; };
   switch (act) {
-    case "schluss": return admin(asAdminCmd(i, "anmeldeschluss", [], needSignup()), context, cfg);
-    case "checkin": return admin(asAdminCmd(i, "checkin-ende", [], t?.channelId), context, cfg);
+    case "schluss": {
+      // Neuer Ablauf: Anmeldeschluss = Check-in startet jetzt
+      const ch = needSignup();
+      if (t.times?.draw && t.status === "anmeldung") return background(i, context, async () => { await F.doPreCheck(ch); return "✅ Anmeldeschluss – der **Check-in** läuft jetzt in der Anmeldeliste. Beenden mit **✅ Check-in beenden** (oder automatisch zur eingestellten Zeit)."; });
+      return admin(asAdminCmd(i, "anmeldeschluss", [], ch), context, cfg);
+    }
+    case "checkin": {
+      if (t?.status === "vorcheck") return background(i, context, async () => { await F.doPreCheckEnd(t.channelId); await F.doDrawAndStart(t.channelId); return "✅ Check-in beendet und **ausgelost** – Gruppen stehen, Anpfiff zur eingestellten Zeit."; });
+      if (t?.status === "auslosung") return background(i, context, async () => { await F.doDrawAndStart(t.channelId); return "✅ **Ausgelost** – Gruppen stehen."; });
+      return admin(asAdminCmd(i, "checkin-ende", [], t?.channelId), context, cfg);
+    }
+    case "tn_add": case "tn_rem": case "tn_rep": return V.adminModal(act);
+    case "frei": return eph("**🎟️ Freilos**", { components: [{ type: 1, components: [{ type: 2, style: 3, label: "Freilos hinzufügen", custom_id: "adm:frei_add" }, { type: 2, style: 4, label: "Freilos entfernen", custom_id: "adm:frei_rem" }] }] });
+    case "zeiten": {
+      const c = cfg.cupTimes || { close: F.CLOSE_BEFORE_MIN, checkin: F.CHECKIN_END_BEFORE_MIN, draw: F.DRAW_BEFORE_MIN };
+      return V.timesModal(c);
+    }
     case "spiele": return admin(asAdminCmd(i, "spiele", [], t?.channelId), context, cfg);
     case "frei_add": return admin(asAdminCmd(i, "freilos-hinzufügen", [], needSignup()), context, cfg);
     case "frei_rem": return admin(asAdminCmd(i, "freilos-entfernen", [], needSignup()), context, cfg);
@@ -478,6 +493,18 @@ async function admin(i, context, cfg) {
         : `• <@${x.u}> (${V.esc(x.club || "?")})${x.add.length ? ` fehlt: ${x.add.map((id) => `<@&${id}>`).join(" ")}` : ""}${x.rem.length ? ` zu viel: ${x.rem.map((id) => `<@&${id}>`).join(" ")}` : ""}${x.pending ? " ⏳" : ""}`);
       await enqueue(r.ops.map((o) => ({ ...o, why: "Rollen-Check" })));
       await processQueue(8000);
+      // Ehrliche Rückmeldung: hat es wirklich geklappt? Sonst den Grund nennen
+      const after = await M.cupRoleDiff(await listMembers(), { includePending: true });
+      const still = after?.missing?.filter((x) => !x.gone && (x.add.length || x.rem.length)) || [];
+      if (still.length) {
+        const h = await M.roleHealth();
+        const why = [];
+        if (h.deleted.length) why.push(`🗑️ **Gelöschte Rollen:** ${h.deleted.join(", ")} → \`/ut-einrichten alles\` legt sie neu an.`);
+        if (h.above.length) why.push(`⬆️ **Diese Rollen stehen über der Bot-Rolle „${h.botRole}“:** ${h.above.join(", ")} → in den Servereinstellungen → Rollen **„${h.botRole}“ ganz nach oben ziehen**.`);
+        const le = (await import("../cup/discord.mjs")).getLastError();
+        if (!why.length && le) why.push(`⚠️ Discord meldet: **${le.status}** ${le.status === 403 ? "(keine Berechtigung – Bot braucht „Rollen verwalten“ und muss über den Rollen stehen)" : ""}`);
+        return `${head}\n❌ **${still.length} ${still.length === 1 ? "Person hat" : "Personen haben"} die Rollen NICHT bekommen.**\n${why.join("\n") || "Grund unbekannt – bitte Netlify-Log (cup-interactions) prüfen."}\n\n${lines.join("\n")}`;
+      }
       return `${head}\n⚠️ **${r.missing.length} Abweichungen** – ich korrigiere sie jetzt:\n${lines.join("\n")}${r.missing.length > 25 ? `\n… und ${r.missing.length - 25} weitere` : ""}\n-# ⏳ = war schon in der Warteschlange. Führ den Check in 1–2 Minuten nochmal aus. Bleibt jemand übrig, steht die Bot-Rolle wahrscheinlich unter dieser Rolle (Servereinstellungen → Rollen → Bot-Rolle nach oben ziehen).`.slice(0, 1990);
     });
   }
@@ -691,6 +718,49 @@ async function modal(i, context) {
         await F.afterResult(t2, m, result.events, true);
         if (m.phase === "gruppe" && !result.events.length) await F.refreshGroupGraphic(t2, m.group);
         return `✅ Spiel #${m.id} geändert: ${V.matchLine(m, false)}`;
+      });
+    }
+    if (kind === "zeiten") {
+      let mins;
+      try { mins = F.checkMinutes({ close: Number(v.close), checkin: Number(v.checkin), draw: Number(v.draw) }); } catch (e) { return eph("❌ " + e.message); }
+      await mutate("config", (c) => { c.cupTimes = mins; }, { initial: {} });
+      let note = "Gilt für alle **neuen** Cups.";
+      if (t && ["anmeldung", "vorcheck", "auslosung"].includes(t.status)) {
+        const { value } = await mutate(tKey(t.channelId), (x) => { x.times = F.timesFromKickoff(x.times.kickoff, mins); });
+        later(context, () => F.refreshSignup(value));
+        note = `Auch für **${V.esc(t.name)}** übernommen.`;
+      }
+      return eph(`⏰ Zeiten gespeichert: Anmeldeschluss **${mins.close} Min.**, Check-in bis **${mins.checkin} Min.**, Auslosung **${mins.draw} Min.** vor Start.\n${note}`);
+    }
+    if (kind === "tn_add" || kind === "tn_rem" || kind === "tn_rep") {
+      if (!t) return eph("Gerade gibt es keinen Cup.");
+      return background(i, context, async () => {
+        if (kind === "tn_add") {
+          const club = await findPlayer(v.spieler);
+          const { value } = await mutate(tKey(t.channelId), (x) => T.adminAdd(x, club));
+          await F.refreshSignup(value);
+          return `✅ **${V.esc(club)}** ist jetzt angemeldet${value.status !== "anmeldung" ? " (und eingecheckt)" : ""}.`;
+        }
+        if (kind === "tn_rem") {
+          const club = await findPlayer(v.spieler);
+          const { value, result } = await mutate(tKey(t.channelId), (x) => { const r = T.adminRemove(x, club); r.events = r.mode === "kampflos" ? T.advance(x) : []; return r; });
+          if (result.mode === "liste") { await F.refreshSignup(value); return `✅ **${V.esc(club)}** wurde von der Liste entfernt.`; }
+          const done = value.matches.filter((m) => m.ff && (m.home === club || m.away === club));
+          for (const m of done.slice(0, -1)) await F.afterResult(value, m, []);
+          if (done.length) await F.afterResult(value, done[done.length - 1], result.events);
+          return `✅ **${V.esc(club)}** ist raus – ${result.games} offene ${result.games === 1 ? "Spiel" : "Spiele"} kampflos (0:3) gewertet.`;
+        }
+        const oldC = await findPlayer(v.alt), newC = await findPlayer(v.neu);
+        const { value, result } = await mutate(tKey(t.channelId), (x) => T.adminReplace(x, oldC, newC));
+        // Rollen tauschen (Gruppe/K.-o.) und Mitglieder merken
+        const clubs = await getClubs();
+        await mutate(tKey(t.channelId), (x) => { x.members = x.members || {}; x.members[newC] = F.membersOf(clubs, newC); delete x.members[oldC]; });
+        const roleIds = [result.group && cfg.roles.groups?.[result.group], ...(value.status === "ko" ? [cfg.roles.koPhase, cfg.roles.rounds?.[T.koRoundName(value)]] : [])].filter(Boolean);
+        if (roleIds.length) await enqueue([...F.membersOf(clubs, oldC).map((u) => ({ u, rem: roleIds, why: "Ersetzt" })), ...F.membersOf(clubs, newC).map((u) => ({ u, add: roleIds, why: "Nachrücker" }))]);
+        await F.refreshSignup(value).catch(() => {});
+        if (result.group) await F.refreshGroupGraphic(value, result.group).catch(() => {});
+        if (value.status === "ko") await F.refreshKOGraphic(value).catch(() => {});
+        return `🔁 **${V.esc(oldC)}** wurde durch **${V.esc(newC)}** ersetzt${result.group ? ` (${value.league ? "Liga" : "Gruppe " + result.group})` : ""}. Bisherige Ergebnisse bleiben bestehen.`;
       });
     }
     if (kind === "abmelden") {

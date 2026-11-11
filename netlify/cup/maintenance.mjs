@@ -71,3 +71,25 @@ export async function cupRoleDiff(members, { includePending = false } = {}) {
   }
   return { t, ops, missing, queue: pending.size };
 }
+
+
+/** Warum können Rollen nicht vergeben werden? Gelöschte Rollen + Rollen, die über dem Bot stehen */
+export async function roleHealth() {
+  const { discord } = await import("./discord.mjs");
+  const cfg = await getConfig();
+  const G = process.env.CUP_GUILD_ID || process.env.GUILD_ID;
+  const roles = (await discord(`/guilds/${G}/roles`)) || [];
+  const me = await discord("/users/@me");
+  const meMember = me ? await discord(`/guilds/${G}/members/${me.id}`) : null;
+  const pos = (id) => roles.find((r) => r.id === id)?.position ?? -1;
+  const botTop = Math.max(-1, ...((meMember?.roles || []).map(pos)));
+  const wanted = [
+    ...Object.entries(cfg.roles.groups || {}).map(([g, id]) => [`UT Gruppe ${g}`, id]),
+    ...Object.entries(cfg.roles.rounds || {}).map(([r, id]) => [`UT ${r}`, id]),
+    ["UT KO Phase", cfg.roles.koPhase], ["UT Spieler", cfg.roles.manager],
+  ].filter(([, id]) => id);
+  const deleted = wanted.filter(([, id]) => !roles.some((r) => r.id === id)).map(([n]) => n);
+  const above = wanted.filter(([, id]) => roles.some((r) => r.id === id) && pos(id) >= botTop).map(([, id]) => roles.find((r) => r.id === id).name);
+  const botRole = roles.filter((r) => (meMember?.roles || []).includes(r.id)).sort((a, b) => b.position - a.position)[0];
+  return { deleted, above, botRole: botRole?.name || "?" };
+}

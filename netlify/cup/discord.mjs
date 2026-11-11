@@ -6,6 +6,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * REST-Aufruf mit Rate-Limit-Behandlung: bei 429 wird kurz gewartet und erneut versucht.
  * Gibt das JSON (oder true) zurück, bei Fehlern null.
  */
+let lastError = null;
+/** Letzter Discord-Fehler (für Diagnosen wie den Rollen-Check) */
+export const getLastError = () => lastError;
+
 export async function discord(path, method = "GET", body, { form, reason, maxWait = 6000 } = {}) {
   for (let attempt = 0; attempt < 4; attempt++) {
     const headers = { Authorization: `Bot ${(process.env.CUP_DISCORD_TOKEN || process.env.DISCORD_TOKEN)}` };
@@ -25,7 +29,9 @@ export async function discord(path, method = "GET", body, { form, reason, maxWai
       if (after > 0 && after < maxWait) await sleep(after);
     }
     if (!res.ok) {
-      console.error(`Discord ${method} ${path} -> ${res.status}: ${await res.text()}`);
+      const text = await res.text();
+      console.error(`Discord ${method} ${path} -> ${res.status}: ${text}`);
+      lastError = { status: res.status, path, method, text, at: Date.now() };
       return null;
     }
     return res.status === 204 ? true : res.json();
