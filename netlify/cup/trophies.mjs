@@ -67,7 +67,7 @@ export function trophyPanel(S, clubs = {}, site = "") {
   if (R.streak && R.streak.n > 1) rec.push(`🔥 **Titel in Folge:** ${flagOf(R.streak.club)} ${esc(R.streak.club)} · ${R.streak.n}× (${R.streak.from} – ${R.streak.to})`);
   const most = Object.entries(S.clubs).sort((a, b) => b[1].cups - a[1].cups)[0];
   if (most) rec.push(`🎯 **Meiste Cups gespielt:** ${flagOf(most[0])} ${esc(most[0])} · ${most[1].cups}`);
-  const last = S.last.map((x) => `\`${x.date.split(", ").pop()}\` 🏆 ${flagOf(x.club)} **${esc(x.club)}**${x.final ? ` · Finale ${x.final.h}:${x.final.a}${x.final.pen ? ` (${x.final.pen[0]}:${x.final.pen[1]} i.E.)` : ""} gegen ${esc(x.final.opp)}` : ""}`);
+  const last = S.last.map((x) => `\`${fixDate(String(x.date || "").split(", ").pop()) || "–"}\` 🏆 ${flagOf(x.club)} **${esc(x.club)}**${x.final ? ` · Finale ${x.final.h}:${x.final.a}${x.final.pen ? ` (${x.final.pen[0]}:${x.final.pen[1]} i.E.)` : ""} gegen ${esc(x.final.opp)}` : ""}`);
   const withMedal = Object.values(S.clubs).filter((x) => x.g || x.s || x.b).length;
   const empty = "_Noch keine Einträge – nach dem ersten Cup geht’s los._";
   return {
@@ -102,7 +102,14 @@ export async function myStats(uid) {
   return `📊 **Deine Statistik**\n\n${now}🏆 **${x.g} Titel**${by ? ` (${by})` : ""} · 🥈 ${x.s} Finals · 🥉 ${x.b}× Platz 3\n🎮 **${x.cups} ${x.cups === 1 ? "Cup" : "Cups"}** · ${games} Spiele · ${x.w} S · ${x.d} U · ${x.l} N\n⚽ ${x.gf}:${x.ga} Tore · TD ${td > 0 ? "+" + td : td}${games ? ` · Ø ${(x.gf / games).toFixed(1).replace(".", ",")} Tore pro Spiel` : ""}\n\n🏅 **Deine Vitrine:** ${vit || "noch leer"}`;
 }
 
-const okDate = (d) => (d && !String(d).includes("undefined") ? ` (${d})` : "");
+/** Alte, kaputt gespeicherte Daten („undefined.1794006000000.“) reparieren – die Zahl ist der Zeitstempel */
+function fixDate(d) {
+  const m = String(d || "").match(/undefined\.(\d{11,})/);
+  if (!m) return String(d || "").includes("undefined") ? "" : String(d || "");
+  const vp = viennaParts(Number(m[1]));
+  return `${shortDate(vp.mo, vp.d)}${vp.y}`;
+}
+const okDate = (d) => (fixDate(d) ? ` (${fixDate(d)})` : "");
 
 export async function refreshTrophyPanel() {
   const cfg = await getConfig(); const ch = cfg.channels?.trophy; if (!ch) return;
