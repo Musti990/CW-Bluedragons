@@ -47,16 +47,16 @@ const PLAN = [
     { key: "g" + g, name: "⚽・" + fancy("UT-Gruppe-" + g), cat: "groups", prof: "group:" + g },
     { key: "r" + g, name: "📋・" + fancy("UT-" + g + "-Ergebnisse"), cat: "groups", prof: "groupres:" + g },
   ]),
-  { key: "af", name: "🔥・" + fancy("UT-Achtelfinale"), cat: "ko", prof: "public" },
-  { key: "vf", name: "⚡・" + fancy("UT-Viertelfinale"), cat: "ko", prof: "public" },
-  { key: "hf", name: "💥・" + fancy("UT-Halbfinale"), cat: "ko", prof: "public" },
-  { key: "p3", name: "🥉・" + fancy("UT-Spiel-um-Platz-3"), cat: "ko", prof: "public" },
-  { key: "final", name: "🏆・" + fancy("UT-Finale"), cat: "ko", prof: "public" },
-  { key: "afr", name: "📋・" + fancy("UT-Achtelfinale-Ergebnisse"), cat: "ko", prof: "koround" },
-  { key: "vfr", name: "📋・" + fancy("UT-Viertelfinale-Ergebnisse"), cat: "ko", prof: "koround" },
-  { key: "hfr", name: "📋・" + fancy("UT-Halbfinale-Ergebnisse"), cat: "ko", prof: "koround" },
-  { key: "p3r", name: "📋・" + fancy("UT-Platz-3-Ergebnisse"), cat: "ko", prof: "koround" },
-  { key: "finalr", name: "📋・" + fancy("UT-Finale-Ergebnisse"), cat: "ko", prof: "koround" },
+  { key: "af", name: "🔥・" + fancy("UT-Achtelfinale"), cat: "ko", prof: "round:af" },
+  { key: "vf", name: "⚡・" + fancy("UT-Viertelfinale"), cat: "ko", prof: "round:vf" },
+  { key: "hf", name: "💥・" + fancy("UT-Halbfinale"), cat: "ko", prof: "round:hf" },
+  { key: "p3", name: "🥉・" + fancy("UT-Spiel-um-Platz-3"), cat: "ko", prof: "round:p3" },
+  { key: "final", name: "🏆・" + fancy("UT-Finale"), cat: "ko", prof: "round:final" },
+  { key: "afr", name: "📋・" + fancy("UT-Achtelfinale-Ergebnisse"), cat: "ko", prof: "roundres:af" },
+  { key: "vfr", name: "📋・" + fancy("UT-Viertelfinale-Ergebnisse"), cat: "ko", prof: "roundres:vf" },
+  { key: "hfr", name: "📋・" + fancy("UT-Halbfinale-Ergebnisse"), cat: "ko", prof: "roundres:hf" },
+  { key: "p3r", name: "📋・" + fancy("UT-Platz-3-Ergebnisse"), cat: "ko", prof: "roundres:p3" },
+  { key: "finalr", name: "📋・" + fancy("UT-Finale-Ergebnisse"), cat: "ko", prof: "roundres:final" },
   { key: "admin", name: "⚙️・" + fancy("UT-Admin"), cat: "ko", prof: "admins" },
 ];
 const CATS = { info: "🐉 UT CUP · INFO", cup: "🏆 ULTIMATE TEAM CUP", groups: "⚽ UT GRUPPEN", ko: "⚔️ UT K.-O.-PHASE" };
@@ -82,6 +82,9 @@ export function detectKey(rawName) {
 }
 
 /** Rechte je Profil (Bot ist Admin und sieht ohnehin alles) */
+/** Welche Runden-Rolle gehört zu welchem K.-o.-Kanal */
+const ROUND_OF_KEY = { af: ["Sechzehntelfinale", "Achtelfinale"], vf: ["Viertelfinale"], hf: ["Halbfinale"], p3: ["Spiel um Platz 3"], final: ["Finale"] };
+
 function overwrites(prof, roles) {
   const everyone = G();
   const ro = { id: everyone, type: 0, allow: bits(P.VIEW, P.HISTORY), deny: bits(P.SEND) };
@@ -100,6 +103,13 @@ function overwrites(prof, roles) {
   if (prof === "admins") return [hide]; // nur Server-Admins (sehen ohnehin alles) und der Bot
   if (prof.startsWith("group:")) return [hide, see(roles.groups?.[prof.slice(6)], P.SEND), lead].filter(Boolean);
   if (prof.startsWith("groupres:")) return [hide, see(roles.groups?.[prof.slice(9)], P.SEND, P.FILES), lead].filter(Boolean);
+  // K.-o.-Runden: NUR die Spieler dieser Runde (+ Turnierleitung) sehen den Kanal – nicht @everyone
+  if (prof.startsWith("round:") || prof.startsWith("roundres:")) {
+    const key = prof.split(":")[1], res = prof.startsWith("roundres:");
+    const names = ROUND_OF_KEY[key] || [];
+    // Wer die Runden-Rolle hat, darf im Runden- UND im Ergebnis-Kanal lesen und schreiben (inkl. Bilder/Screenshots)
+    return [hide, ...names.map((r) => see(roles.rounds?.[r], P.SEND, P.FILES, P.EMBED)), lead].filter(Boolean);
+  }
   if (prof === "ko") return [hide, see(roles.koPhase, P.SEND), ...ROUND_ROLES.map((r) => see(roles.rounds?.[r], P.SEND)), lead].filter(Boolean);
   // Runden-Kanäle (Achtel- bis Finale): alle lesen, Spieler der K.-o.-Phase dürfen Screenshots posten
   if (prof === "koround") return [ro, see(roles.koPhase, P.SEND, P.FILES), ...ROUND_ROLES.map((r) => see(roles.rounds?.[r], P.SEND, P.FILES)), lead].filter(Boolean);
