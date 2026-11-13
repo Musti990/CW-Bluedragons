@@ -197,11 +197,16 @@ export async function doDraw(channelId) {
   const cfg = await getConfig(), clubs = await getClubs();
   const busy = await activeTournament();
   const { value: t, result } = await mutate(tKey(channelId), (t) => {
-    if (busy && busy.channelId !== channelId && T.ACTIVE.includes(busy.status)) { t.status = "abgesagt"; return { cancelled: true, busy: true }; }
+    // Läuft gerade ein anderer Cup? Dann NICHT absagen, sondern warten – der Timer versucht es jede Minute neu
+    if (busy && busy.channelId !== channelId && T.ACTIVE.includes(busy.status)) { const first = !t.waitBusy; t.waitBusy = true; return { waiting: true, first }; }
     const r = T.closeAndDraw(t);
     if (!r.cancelled) for (const c of t.playing.concat(t.wait)) t.members[c] = membersOf(clubs, c);
     return r;
   }, { missing: "Turnier nicht gefunden." });
+  if (result.waiting) {
+    if (result.first) await sendMessage(channelId, { content: "⏳ **Gleich geht's los** – es läuft noch ein anderer Cup. Die Auslosung startet automatisch, sobald der fertig ist." });
+    return t;
+  }
   await refreshSignup(t);
   if (result.cancelled) {
     await sendMessage(channelId, { content: result.busy ? "⚠️ **Der Cup fällt aus** – es läuft gerade noch ein anderer Cup." : `⚠️ **Der Cup fällt heute aus** – nur ${t.reg.length} ${t.reg.length === 1 ? "Spieler" : "Spieler"} angemeldet, mindestens 8 nötig.` });
@@ -349,7 +354,7 @@ async function postGroupFreigabe(t, g, round, cfg) {
   if (!ch) return;
   const fresh = (await get(tKey(t.channelId))) || t;
   const keep = [fresh.msgs?.groups?.[g.name]?.plan, fresh.msgs?.groups?.[g.name]?.res];
-  try { await purgeExcept(ch, keep, "neuer Spieltag (alte Nachrichten weg)"); } catch (e) { console.error("Gruppenkanal leeren:", e?.message || e); }
+  // Kein automatisches Leeren mehr – nur per „🧹 Kanäle säubern“ im Admin-Panel
   // Nur das Bild (Spieltag + Tabelle), dazu eine kurze Zeile mit Markierung, damit alle Bescheid bekommen
   const label = t.league ? "Liga" : `Gruppe ${g.name}`;
   const res = cfg.channels["r" + g.name];

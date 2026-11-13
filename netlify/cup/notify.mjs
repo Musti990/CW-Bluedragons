@@ -13,7 +13,7 @@ export async function notify(users, payload) {
   const ch = cfg.channels.notify;
   if (!ch) return null;
   const msg = await sendMessage(ch, { ...payload, content: ids.map((u) => `<@${u}>`).join(" "), allowed_mentions: { users: ids } });
-  if (msg) await mutate("autodelete", (l) => { l.push({ ch, id: msg.id, at: Date.now() + NOTIFY_TTL_MS }); }, { initial: [] });
+  // Benachrichtigungen bleiben stehen (kein automatisches Löschen mehr)
   return msg;
 }
 

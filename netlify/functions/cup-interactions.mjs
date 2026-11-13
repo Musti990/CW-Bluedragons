@@ -106,8 +106,15 @@ async function adminPanelAction(i, context, cfg, act) {
     case "neu_mode": {
       const d = await get(`newcup:${uidOf(i)}`);
       if (!d) return eph("Der Entwurf ist abgelaufen – bitte nochmal „Neuer Cup“.");
-      const ch = cfg.channels.signup || i.channel_id;
-      return manualCup({ ...i, channel_id: ch, type: 2, data: { name: "ut-turnier", options: [{ name: "name", value: d.name }, { name: "anpfiff", value: d.anpfiff }, { name: "modus", value: i.data.values?.[0] || "auto" }] } }, context);
+      await set(`newcup:${uidOf(i)}`, { ...d, mode: i.data.values?.[0] || "auto" });
+      // In welchen Kanal? (pro Kanal eine Anmeldeliste – so gehen mehrere Anmeldungen gleichzeitig)
+      return eph(`**🆕 ${V.esc(d.name)}** – in welchem Kanal soll die Anmeldeliste stehen?\n-# Pro Kanal gibt es eine Liste. Für eine zweite Anmeldung gleichzeitig einfach einen anderen Kanal wählen (z. B. „UT-Anmeldung-2“).`, { components: [{ type: 1, components: [{ type: 8, custom_id: "adm:neu_ch", channel_types: [0], placeholder: "Kanal wählen…", ...(cfg.channels.signup ? { default_values: [{ id: cfg.channels.signup, type: "channel" }] } : {}) }] }] });
+    }
+    case "neu_ch": {
+      const d = await get(`newcup:${uidOf(i)}`);
+      if (!d) return eph("Der Entwurf ist abgelaufen – bitte nochmal „Neuer Cup“.");
+      const ch = i.data.values?.[0] || cfg.channels.signup || i.channel_id;
+      return manualCup({ ...i, channel_id: ch, type: 2, data: { name: "ut-turnier", options: [{ name: "name", value: d.name }, { name: "anpfiff", value: d.anpfiff }, { name: "modus", value: d.mode || "auto" }] } }, context);
     }
     case "edit":
       if (!t || !["gruppen", "ko"].includes(t.status)) return eph("Gerade laufen keine Spiele.");

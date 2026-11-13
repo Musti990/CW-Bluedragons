@@ -1697,6 +1697,9 @@ exports.handler = async (event) => {
 
   if (interaction.type === 1) return json(200, { type: 1 }); // PING -> PONG
 
+  // 🖱️ Jeder Button-Klick / jede Auswahl → Mod-Log (auch für den UT Cup, bevor weitergeleitet wird)
+  if (interaction.type === 3) await Promise.race([require('./lib/modlog').logClick(interaction), new Promise((r) => setTimeout(r, 1200))]);
+
   // Ultimate Team Cup: gleiche Discord-App, eigener Teil → Anfrage an /api/cup/interactions weiterreichen
   if (isCupInteraction(interaction)) {
     try {

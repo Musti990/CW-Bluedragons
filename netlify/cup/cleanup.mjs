@@ -5,9 +5,12 @@ import { GROUP_NAMES } from "./data.mjs";
 import { audit } from "./audit.mjs";
 
 export const CLEANUP_DELAY_MIN = 30; // so viele Minuten nach Turnierende wird aufgeräumt
+// Automatisches Löschen ist AUS – aufgeräumt wird nur noch per Button „🧹 Kanäle säubern“ im Admin-Panel.
+export const AUTO_DELETE = false;
 
 /** Aufräumen für ein Turnier einplanen */
 export async function scheduleCleanup(t, delayMin = CLEANUP_DELAY_MIN) {
+  if (!AUTO_DELETE) return;
   const cfg = await getConfig();
   const c = cfg.channels || {};
   const channels = [
@@ -69,6 +72,7 @@ export async function purgeExcept(ch, keep = [], reason = "") {
 
 /** Vom Timer: fällige Aufräum-Aufträge abarbeiten */
 export async function runCleanup(budgetMs = 8000, now = Date.now()) {
+  if (!AUTO_DELETE) { if ((await get("cleanup"))?.length) await mutate("cleanup", (l) => { l.splice(0); }, { initial: [] }); return; } // alte, noch geplante Aufräum-Aufträge verwerfen
   const deadline = Date.now() + budgetMs;
   const list = (await get("cleanup")) || [];
   for (const job of list.filter((j) => j.at <= now)) {

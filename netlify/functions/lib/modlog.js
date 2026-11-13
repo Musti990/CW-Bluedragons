@@ -29,10 +29,36 @@ const T = {
   75: { e: '📍', t: 'Pin entfernt', c: 0x5865f2 },
 };
 
+let chCache = { id: null, at: 0 };
 async function findChannel(guildId) {
   if (process.env.MODLOG_CHANNEL_ID) return process.env.MODLOG_CHANNEL_ID;
+  if (chCache.at && Date.now() - chCache.at < 10 * 60000) return chCache.id;
   const r = await fetch(`${API}/guilds/${guildId}/channels`, { headers: auth() });
-  return r.ok ? (await r.json()).find((c) => c.type === 0 && norm(c.name).includes('modlog'))?.id || null : null;
+  const id = r.ok ? (await r.json()).find((c) => c.type === 0 && norm(c.name).includes('modlog'))?.id || null : null;
+  chCache = { id, at: Date.now() };
+  return id;
+}
+
+/** Jeden Button-Klick / jede Auswahl ins Mod-Log (wer, was, wo) */
+async function logClick(i) {
+  try {
+    if (i.type !== 3 || !i.guild_id) return;
+    const ch = await findChannel(i.guild_id);
+    if (!ch || i.channel_id === ch) return;
+    const id = i.data?.custom_id || '';
+    let label = null;
+    for (const row of i.message?.components || []) for (const c of row.components || [row]) {
+      if (c.custom_id === id) label = c.label || c.placeholder || null;
+      for (const cc of c.components || []) if (cc.custom_id === id) label = cc.label || cc.placeholder || null; // Components V2
+    }
+    const KNOWN = { 'rsvp:yes': 'Zusage ✅', 'rsvp:no': 'Absage ❌', 'rsvp:maybe': 'Vielleicht ❔', 'rsvp:missing': 'Wer fehlt noch?' };
+    label = label || KNOWN[id.split(':').slice(0, 2).join(':')] || null;
+    const vals = i.data?.values?.length ? ` → ${i.data.values.slice(0, 5).join(', ')}` : '';
+    const uid = i.member?.user?.id || i.user?.id;
+    const t = new Intl.DateTimeFormat('de-AT', { timeZone: 'Europe/Vienna', hour: '2-digit', minute: '2-digit' }).format(new Date());
+    const text = `\`${t}\` 🖱️ <@${uid}> klickt **${(label || id.split(':').slice(0, 2).join(':')).slice(0, 80)}**${vals} in <#${i.channel_id}>`;
+    await fetch(`${API}/channels/${ch}/messages`, { method: 'POST', headers: auth(), body: JSON.stringify({ content: text.slice(0, 1990), allowed_mentions: { parse: [] } }), signal: AbortSignal.timeout(1500) });
+  } catch { /* das Log darf nie etwas blockieren */ }
 }
 
 /** /modlog-einrichten: Kanal anlegen – nur für Admins/Mods sichtbar, niemand schreibt außer dem Bot */
@@ -104,4 +130,4 @@ async function processModlog(guildId) {
   return fresh.length ? `${fresh.length} Einträge gepostet` : null;
 }
 
-module.exports = { processModlog, setupModlog, CHANNEL_NAME };
+module.exports = { processModlog, setupModlog, logClick, CHANNEL_NAME };
