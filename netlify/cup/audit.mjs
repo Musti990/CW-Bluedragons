@@ -6,6 +6,7 @@ const hhmm = () => new Intl.DateTimeFormat("de-AT", { timeZone: "Europe/Vienna",
 
 /** Eine Zeile ins Bot-Log schreiben (ohne Pings). Fehler werden ignoriert – das Log darf nie etwas blockieren. */
 export async function audit(text) {
+  console.log("[Bot-Log]", String(text).replace(/\n/g, " | ")); // auch in den Netlify-Logs sichtbar
   try {
     const cfg = await getConfig();
     const ch = cfg.channels?.audit || process.env.AUDIT_CHANNEL_ID;

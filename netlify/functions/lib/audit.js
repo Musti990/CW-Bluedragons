@@ -18,6 +18,7 @@ async function channelId(guildId) {
 
 /** Eine Zeile ins Bot-Log (ohne Pings). Fehler werden ignoriert. */
 async function audit(text, guildId) {
+  console.log('[Bot-Log]', String(text).replace(/\n/g, ' | ')); // auch in den Netlify-Logs sichtbar
   try {
     const ch = await channelId(guildId);
     if (!ch) return;

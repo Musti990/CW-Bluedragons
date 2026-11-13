@@ -165,6 +165,14 @@ exports.handler = async () => {
     results.push({ greetings: 'Fehler: ' + err.message });
   }
 
+  // 🛡️ Mod-Log: neue Einträge aus dem Discord-Audit-Log posten
+  try {
+    const ml = await require('./lib/modlog').processModlog(process.env.GUILD_ID);
+    if (ml) results.push({ modlog: ml });
+  } catch (err) {
+    results.push({ modlog: 'Fehler: ' + err.message });
+  }
+
   // Server-Regeln: bestehenden Mitgliedern einmalig „Verifiziert“ geben (in Schritten)
   try {
     const bf = await require('./lib/server-rules').processBackfill(15000);

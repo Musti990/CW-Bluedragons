@@ -1772,6 +1772,14 @@ exports.handler = async (event) => {
     return ephemeral(already ? '✅ Du hast die Regeln bereits akzeptiert.' : '✅ **Danke!** Du hast die Server-Regeln akzeptiert – die **Rollenauswahl** ist jetzt für dich freigeschaltet.');
   }
 
+  if (interaction.type === 2 && interaction.data?.name === 'modlog-einrichten') {
+    if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können das einrichten.');
+    const r = await require('./lib/modlog').setupModlog(interaction.guild_id);
+    if (r.error) return ephemeral('⚠️ ' + r.error);
+    if (r.existed) return ephemeral('✅ Den **Mod-Log**-Kanal gibt es schon – neue Einträge kommen dort alle 2 Minuten.');
+    return ephemeral(`✅ **${require('./lib/modlog').CHANNEL_NAME}** angelegt.\n🔒 Sichtbar nur für Admins${r.staff.length ? ` und: ${r.staff.join(', ')}` : ''} – schreiben kann nur der Bot.\n⏱️ Ab jetzt landen Bans, Kicks, Timeouts, Rollen- und Namensänderungen, gelöschte Nachrichten (durch Mods) und Kanal-/Rollenänderungen dort – alle 2 Minuten, mit Mod und Grund.`);
+  }
+
   if (interaction.type === 2 && interaction.data?.name === 'serverkontaktpersonen') {
     if (!(await isKaderAdmin(interaction))) return ephemeral('⛔ Nur Admins können das posten.');
     try { await require('./lib/contacts').post(interaction.guild_id, interaction.channel_id); }

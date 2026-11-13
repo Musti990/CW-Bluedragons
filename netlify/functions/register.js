@@ -103,6 +103,11 @@ exports.handler = async () => {
   });
 
   commands.push({
+    name: 'modlog-einrichten',
+    description: 'Legt den Mod-Log-Kanal an (Bans, Kicks, Timeouts, Rollen, Namen …) – nur Admins',
+  });
+
+  commands.push({
     name: 'serverkontaktpersonen',
     description: 'Postet die offiziellen Server-Kontaktpersonen (bearbeitbar) – nur Admins',
   });
