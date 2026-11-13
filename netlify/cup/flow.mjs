@@ -349,7 +349,7 @@ async function postGroupFreigabe(t, g, round, cfg) {
   if (!ch) return;
   const fresh = (await get(tKey(t.channelId))) || t;
   const keep = [fresh.msgs?.groups?.[g.name]?.plan, fresh.msgs?.groups?.[g.name]?.res];
-  try { await purgeExcept(ch, keep); } catch (e) { console.error("Gruppenkanal leeren:", e?.message || e); }
+  try { await purgeExcept(ch, keep, "neuer Spieltag (alte Nachrichten weg)"); } catch (e) { console.error("Gruppenkanal leeren:", e?.message || e); }
   // Nur das Bild (Spieltag + Tabelle), dazu eine kurze Zeile mit Markierung, damit alle Bescheid bekommen
   const label = t.league ? "Liga" : `Gruppe ${g.name}`;
   const res = cfg.channels["r" + g.name];

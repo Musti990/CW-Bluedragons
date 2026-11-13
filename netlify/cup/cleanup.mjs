@@ -2,6 +2,7 @@
 import { get, mutate, getConfig } from "./store.mjs";
 import { discord, deleteMessage } from "./discord.mjs";
 import { GROUP_NAMES } from "./data.mjs";
+import { audit } from "./audit.mjs";
 
 export const CLEANUP_DELAY_MIN = 30; // so viele Minuten nach Turnierende wird aufgeräumt
 
@@ -16,26 +17,31 @@ export async function scheduleCleanup(t, delayMin = CLEANUP_DELAY_MIN) {
   const since = (t.createdAt || Date.now()) - 60 * 1000;
   await mutate("cleanup", (l) => {
     if (l.some((j) => j.tid === t.channelId + ":" + t.createdAt)) return;
-    l.push({ tid: t.channelId + ":" + t.createdAt, at: Date.now() + delayMin * 60000, since, channels: [...new Set(channels)] });
+    // Im Anmelde-Kanal nur die eigenen Bot-Nachrichten löschen – Posts von Mitgliedern bleiben stehen
+    l.push({ tid: t.channelId + ":" + t.createdAt, name: t.name, at: Date.now() + delayMin * 60000, since, channels: [...new Set(channels)], botOnly: [t.channelId, c.live].filter(Boolean) });
   }, { initial: [] });
 }
 
 /** Nachrichten eines Kanals seit `since` holen (neueste zuerst) */
-async function messagesSince(ch, since, max = 500) {
+let BOT_ID = null;
+async function botId() { if (!BOT_ID) BOT_ID = (await discord("/users/@me"))?.id || null; return BOT_ID; }
+
+async function messagesSince(ch, since, max = 500, { botOnly = false } = {}) {
+  const me = botOnly ? await botId() : null;
   const out = [];
   let before = null;
   while (out.length < max) {
     const batch = await discord(`/channels/${ch}/messages?limit=100${before ? `&before=${before}` : ""}`);
     if (!batch?.length) break;
-    for (const m of batch) if (Date.parse(m.timestamp) >= since) out.push(m.id);
+    for (const m of batch) if (Date.parse(m.timestamp) >= since && (!botOnly || m.author?.id === me)) out.push(m.id);
     if (batch.length < 100 || Date.parse(batch[batch.length - 1].timestamp) < since) break;
     before = batch[batch.length - 1].id;
   }
   return out;
 }
 
-async function wipe(ch, since) {
-  const ids = await messagesSince(ch, since);
+async function wipe(ch, since, botOnly = false) {
+  const ids = await messagesSince(ch, since, 500, { botOnly });
   for (let i = 0; i < ids.length; i += 100) {
     const chunk = ids.slice(i, i + 100);
     if (chunk.length === 1) await deleteMessage(ch, chunk[0]);
@@ -48,7 +54,7 @@ async function wipe(ch, since) {
  * Vor jeder Freigabe: alle Nachrichten im Kanal löschen, außer `keep` (z. B. der Spielplan).
  * Nur Nachrichten der letzten 13 Tage – ältere kann Discord nicht in einem Rutsch löschen.
  */
-export async function purgeExcept(ch, keep = []) {
+export async function purgeExcept(ch, keep = [], reason = "") {
   if (!ch) return 0;
   const keepSet = new Set(keep.filter(Boolean));
   const ids = (await messagesSince(ch, Date.now() - 13 * 86400000, 300)).filter((id) => !keepSet.has(id));
@@ -57,6 +63,7 @@ export async function purgeExcept(ch, keep = []) {
     if (chunk.length === 1) await deleteMessage(ch, chunk[0]);
     else if (!(await discord(`/channels/${ch}/messages/bulk-delete`, "POST", { messages: chunk }))) for (const id of chunk) await deleteMessage(ch, id);
   }
+  if (ids.length) await audit(`🧹 **${ids.length}** ${ids.length === 1 ? "Nachricht" : "Nachrichten"} in <#${ch}> gelöscht – ${reason || "Kanal geleert"}`);
   return ids.length;
 }
 
@@ -67,7 +74,9 @@ export async function runCleanup(budgetMs = 8000, now = Date.now()) {
   for (const job of list.filter((j) => j.at <= now)) {
     while (job.channels.length && Date.now() < deadline - 1500) {
       const ch = job.channels[0];
-      await wipe(ch, job.since);
+      const bo = (job.botOnly || []).includes(ch);
+      const n = await wipe(ch, job.since, bo);
+      if (n) await audit(`🧹 **${n}** ${n === 1 ? "Nachricht" : "Nachrichten"} in <#${ch}> gelöscht – Aufräumen 30 Min. nach Cup-Ende${job.name ? ` (**${job.name}**)` : ""}${bo ? " · nur Bot-Nachrichten" : ""}`);
       job.channels.shift();
       await mutate("cleanup", (l) => { const j = l.find((x) => x.tid === job.tid); if (j) j.channels = [...job.channels]; }, { initial: [] });
     }

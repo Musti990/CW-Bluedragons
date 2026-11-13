@@ -52,6 +52,7 @@ const PLAN = [
   { key: "hf", name: "💥・" + fancy("UT-Halbfinale"), cat: "ko", prof: "round:hf" },
   { key: "p3", name: "🥉・" + fancy("UT-Spiel-um-Platz-3"), cat: "ko", prof: "round:p3" },
   { key: "final", name: "🏆・" + fancy("UT-Finale"), cat: "ko", prof: "round:final" },
+  { key: "audit", name: "🧾・" + fancy("UT-Bot-Log"), cat: "cup", prof: "admins" },
   { key: "afr", name: "📋・" + fancy("UT-Achtelfinale-Ergebnisse"), cat: "ko", prof: "roundres:af" },
   { key: "vfr", name: "📋・" + fancy("UT-Viertelfinale-Ergebnisse"), cat: "ko", prof: "roundres:vf" },
   { key: "hfr", name: "📋・" + fancy("UT-Halbfinale-Ergebnisse"), cat: "ko", prof: "roundres:hf" },
@@ -73,7 +74,7 @@ export function detectKey(rawName) {
   if (n.includes("kophase")) return "ko";
   const day = DAYS.findIndex((d) => n === d.toLowerCase());
   if (day >= 0) return "day" + (day + 1);
-  const map = [["achtelfinaleergebnisse", "afr"], ["viertelfinaleergebnisse", "vfr"], ["halbfinaleergebnisse", "hfr"], ["platz3ergebnisse", "p3r"], ["finaleergebnisse", "finalr"], ["achtelfinale", "af"], ["viertelfinale", "vf"], ["halbfinale", "hf"], ["spielumplatz3", "p3"], ["adminpanel", "panel"], ["turnierchat", "chat"], ["anmeldung", "signup"], ["benachrichtigung", "notify"], ["regelwerk", "rules"], ["registrieren", "reg"], ["meinprofil", "team"], ["spieleruebersicht", "over"], ["livespielplan", "live"], ["halloffame", "hof"], ["trophaeen", "trophy"], ["sperrliste", "ban"], ["turnierleitung", "log"]];
+  const map = [["botlog", "audit"], ["achtelfinaleergebnisse", "afr"], ["viertelfinaleergebnisse", "vfr"], ["halbfinaleergebnisse", "hfr"], ["platz3ergebnisse", "p3r"], ["finaleergebnisse", "finalr"], ["achtelfinale", "af"], ["viertelfinale", "vf"], ["halbfinale", "hf"], ["spielumplatz3", "p3"], ["adminpanel", "panel"], ["turnierchat", "chat"], ["anmeldung", "signup"], ["benachrichtigung", "notify"], ["regelwerk", "rules"], ["registrieren", "reg"], ["meinprofil", "team"], ["spieleruebersicht", "over"], ["livespielplan", "live"], ["halloffame", "hof"], ["trophaeen", "trophy"], ["sperrliste", "ban"], ["turnierleitung", "log"]];
   for (const [kw, key] of map) if (n.includes(kw)) return key;
   if (n === "finale") return "final";
   if (n === "regeln") return "rules";

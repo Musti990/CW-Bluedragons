@@ -78,6 +78,7 @@ export const BASE_CHANNEL_TYPES = {
   hf: "Halbfinale",
   p3: "Spiel um Platz 3",
   final: "Finale",
+  audit: "Bot-Log",
   afr: "Achtelfinale-Ergebnisse",
   vfr: "Viertelfinale-Ergebnisse",
   hfr: "Halbfinale-Ergebnisse",

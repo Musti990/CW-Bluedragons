@@ -19,13 +19,14 @@ const BLAU = '#1f6bff';
 const SILBER = '#dbe4f0';
 const GOLDTON = '#f2c14e';
 // Texte – hier anpassen, falls ihr einen anderen Spruch wollt
-const BRAND_A = 'BLUE';
-const BRAND_B = 'DRAGONS';
-const SLOGAN_KLEIN = 'UNITED BY';
-const SLOGAN_1 = 'BLUE';
-const SLOGAN_2 = 'FIRE';
-const SLOGAN_LANG = 'UNITED BY BLUE FIRE';
-const WATERMARK = 'BD';
+const { BRAND, brandLogo, themeSvg } = require('./brand');
+const BRAND_A = BRAND.a;
+const BRAND_B = BRAND.b;
+const SLOGAN_KLEIN = BRAND.small;
+const SLOGAN_1 = BRAND.s1;
+const SLOGAN_2 = BRAND.s2;
+const SLOGAN_LANG = BRAND.long;
+const WATERMARK = BRAND.wm;
 const GOLD = '#e6b422'; // nur für Bestnote / Man of the Match
 
 // Akzentfarbe pro Team (wird anhand der Zahl im Teamnamen gewählt)
@@ -107,11 +108,13 @@ function tricolor(x, y, w, h) {
 
 // "BLUE DRAGONS" wie im Logo: BLUE silber, DRAGONS blau
 function wordmark(x, y, size, anchor = 'start', extra = '') {
+  // längere Namen (z. B. ESPORTS DYNASTIE) etwas kleiner, damit nichts überlappt
+  size = size * Math.min(1, 12 / (BRAND_A.length + BRAND_B.length + 1));
   return `<text x="${x}" y="${y}" text-anchor="${anchor}" font-family="${FONT}" font-weight="bold" font-size="${size}" letter-spacing="1" ${extra}><tspan fill="url(#silverGrad)">${BRAND_A}</tspan><tspan fill="url(#blueGrad)" dx="${size * 0.3}">${BRAND_B}</tspan></text>`;
 }
 
 // Echtes Logo, kreisförmig zugeschnitten. currentLogo wird je Grafik auf das Team-Logo gesetzt.
-let currentLogo = getLogo();
+let currentLogo = brandLogo() || getLogo();
 function logo(cx, cy, size) {
   const L = currentLogo;
   const scale = size / Math.max(L.w, L.h);
@@ -313,7 +316,7 @@ function buildPlayerStatsSvg(data) {
   idCounter = 0;
   const num = teamNumber(data.homeName);
   const accent = (TEAM_STYLES[num] || DEFAULT_STYLE).accent;
-  currentLogo = getLogo(num);
+  currentLogo = brandLogo() || getLogo(num);
   const players = data.homePlayers || [];
   let best = NaN;
   (data.homePlayers || []).concat(data.awayPlayers || []).forEach((p) => {
@@ -439,7 +442,7 @@ function buildSessionSummarySvg(data) {
   idCounter = 0;
   const num = teamNumber(data.teamName);
   const accent = (TEAM_STYLES[num] || DEFAULT_STYLE).accent;
-  currentLogo = getLogo(num);
+  currentLogo = brandLogo() || getLogo(num);
   const matches = data.matches || [];
 
   const players = (data.players || [])
@@ -633,7 +636,7 @@ function buildKaderSvg(data) {
   idCounter = 0;
   const num = teamNumber(data.teamName);
   const accent = (TEAM_STYLES[num] || DEFAULT_STYLE).accent;
-  currentLogo = getLogo(num);
+  currentLogo = brandLogo() || getLogo(num);
   const players = (data.players || []).slice();
   const groups = KADER_GROUPS.map((g) => ({
     ...g,
@@ -795,7 +798,7 @@ function buildLineupSvg(data) {
   idCounter = 0;
   const num = teamNumber(data.teamName);
   const accent = (TEAM_STYLES[num] || DEFAULT_STYLE).accent;
-  currentLogo = getLogo(num);
+  currentLogo = brandLogo() || getLogo(num);
   const formation = FORMATIONS[data.formation] ? data.formation : '3-5-2';
   const slots = FORMATIONS[formation];
   const names = data.players || {};
@@ -838,7 +841,7 @@ function buildMatchReportSvg(data) {
   const num = teamNumber(data.homeName);
   const style = TEAM_STYLES[num] || DEFAULT_STYLE;
   const accent = style.accent;
-  currentLogo = getLogo(num);
+  currentLogo = brandLogo() || getLogo(num);
 
   const homeGoals = Number(data.homeGoals) || 0;
   const awayGoals = Number(data.awayGoals) || 0;
@@ -1000,4 +1003,8 @@ function buildMatchReportSvg(data) {
   </g>`);
 }
 
-module.exports = { buildMatchReportSvg, buildPlayerStatsSvg, buildSessionSummarySvg, buildKaderSvg, buildLineupSvg, FORMATIONS };
+const themed = (fn) => (...args) => themeSvg(fn(...args));
+module.exports = {
+  buildMatchReportSvg: themed(buildMatchReportSvg), buildPlayerStatsSvg: themed(buildPlayerStatsSvg),
+  buildSessionSummarySvg: themed(buildSessionSummarySvg), buildKaderSvg: themed(buildKaderSvg), buildLineupSvg: themed(buildLineupSvg), FORMATIONS,
+};

@@ -52,24 +52,19 @@ function hexBox(x, X, Y, w, h, fill, stroke, lw = 2.5) { const k = h * 0.35; x.b
 const fitFont = (x, t, font, size, max, min = 14) => { let s = size; do { x.font = font.replace("{s}", s); s--; } while (x.measureText(t).width > max && s > min); };
 
 /** Hintergrund (Rauch, Scheinwerfer, Boden) + Titel. Gibt y unter dem Untertitel zurück. */
-async function arenaFrame(x, W, H, title, sub, top) {
-  const dir = assetDir();
-  const bg = await loadImage(path.join(dir, "cw-arena-bg.png"));
-  // oben: Scheinwerfer, unten: Boden – Mitte wird gestreckt
-  const s = W / bg.width, topH = 330 * s, botH = 410 * s;
-  // Mitte zuerst (gestreckt), dann Kopf und Boden mit weichem Übergang darüber
-  x.drawImage(bg, 0, 250, bg.width, bg.height - 250 - 330, 0, topH - 80 * s, W, Math.max(1, H - topH - botH + 160 * s));
-  const soft = (sy, sh, dy, dh, fadeTop) => {
-    const o = createCanvas(Math.ceil(W), Math.ceil(dh)), ox = o.getContext("2d");
-    ox.drawImage(bg, 0, sy, bg.width, sh, 0, 0, W, dh);
-    const g = ox.createLinearGradient(0, 0, 0, dh);
-    if (fadeTop) { g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(0.3, "rgba(0,0,0,1)"); g.addColorStop(1, "rgba(0,0,0,1)"); }
-    else { g.addColorStop(0, "rgba(0,0,0,1)"); g.addColorStop(0.72, "rgba(0,0,0,1)"); g.addColorStop(1, "rgba(0,0,0,0)"); }
-    ox.globalCompositeOperation = "destination-in"; ox.fillStyle = g; ox.fillRect(0, 0, W, dh);
-    x.drawImage(o, 0, dy);
-  };
-  soft(0, 330, 0, topH, false);
-  soft(bg.height - 410, 410, H - botH, botH, true);
+/** Hintergrund zeichnen: Kopf (topEnd) und Fuß (ab botStart) bleiben, die Mitte wird gestreckt */
+async function drawBg(x, W, H, file, topEnd, botStart) {
+  const bg = await loadImage(path.join(assetDir(), file));
+  const s = W / bg.width, tH = topEnd * s, bH = (bg.height - botStart) * s;
+  x.drawImage(bg, 0, topEnd, bg.width, botStart - topEnd, 0, tH - 1, W, Math.max(1, H - tH - bH + 2));
+  x.drawImage(bg, 0, 0, bg.width, topEnd, 0, 0, W, tH);
+  x.drawImage(bg, 0, botStart, bg.width, bg.height - botStart, 0, H - bH, W, bH);
+}
+
+/** Hintergrund (Flammen-Arena) + Titel. Gibt y unter dem Untertitel zurück. */
+async function arenaFrame(x, W, H, title, sub, top, bg = "phase") {
+  if (bg === "table") await drawBg(x, W, H, "cw-bg-table.jpg", 230, 470);
+  else await drawBg(x, W, H, "cw-bg-phase.jpg", 300, 960);
   x.textAlign = "center"; x.textBaseline = "middle";
   const T = title.toUpperCase();
   fitFont(x, T, "{s}px 'Bebas Neue'", Math.round(W * 0.12), W * 0.86);
@@ -103,11 +98,11 @@ function chipAt(x, t, X, yMid, align) {
  */
 export async function tableImage({ title = "Live-Tabelle", sub, info, label, rows, qualify = 2, maybe = 0 }) {
   fonts();
-  const W = 1219, rh = 66, top = 300;
+  const W = 1219, rh = 66, top = 105;
   const Y0 = top + 90 + 38 + 78;
   const H = Y0 + 48 + rows.length * rh + 14 + FOOT;
   const c = createCanvas(W, H), x = c.getContext("2d");
-  let y = await arenaFrame(x, W, H, title, sub || "CW Community World · Ultimate Team Cup", top);
+  let y = await arenaFrame(x, W, H, title, sub || "CW Community World · Ultimate Team Cup", top, "table");
   hexBox(x, 90, y + 10, 360, 48, "rgba(4,12,36,.88)", ARENA_BLUE); x.font = "34px 'Bebas Neue'"; x.fillStyle = "#e8eefb"; x.fillText(String(label || "").toUpperCase(), 270, y + 35);
   hexBox(x, 466, y + 10, 666, 48, "rgba(4,12,36,.88)", ARENA_BLUE); fitFont(x, info || "", "600 {s}px Montserrat", 19, 600, 12); x.fillStyle = "#cfe0ff"; x.fillText(info || "", 799, y + 35);
   const X0 = 84, TW = W - 168, T0 = Y0;
@@ -155,7 +150,7 @@ function matchRow(x, W, y, rowH, m) {
 /** GRUPPENPHASE / LIGAPHASE: alle Spieltage einer Gruppe untereinander */
 export async function groupPhaseImage({ title = "Gruppenphase", sub, label, days }) {
   fonts();
-  const W = 1080, rowH = 78, top = 175;
+  const W = 1080, rowH = 78, top = 140;
   const body = days.reduce((a, d) => a + 70 + d.matches.length * (rowH + 12) + 8, 0);
   const H = 370 + body + FOOT;
   const c = createCanvas(W, H), x = c.getContext("2d");
@@ -176,7 +171,7 @@ export async function groupPhaseImage({ title = "Gruppenphase", sub, label, days
 /** K.-o.-Runde / Finale / Spiel um Platz 3 */
 export async function roundImage({ title, sub, matches, big = false }) {
   fonts();
-  const W = 1080, rowH = big ? 110 : 82, top = 175;
+  const W = 1080, rowH = big ? 110 : 82, top = 140;
   const H = 300 + matches.length * (rowH + 14) + 40 + FOOT;
   const c = createCanvas(W, H), x = c.getContext("2d");
   const y0 = await arenaFrame(x, W, H, title, sub || "CW Community World · Ultimate Team Cup", top);

@@ -64,6 +64,7 @@ async function isPanelAdmin(i) {
 }
 
 async function adminPanelAction(i, context, cfg, act) {
+  if (!["panel_refresh"].includes(act)) later(context, () => import("../cup/audit.mjs").then((A) => A.audit(`🛠️ <@${uidOf(i)}> → Admin-Panel: **${act}**${i.data.values?.length ? ` (${i.data.values.join(", ")})` : ""}`)));
   if (!(await isPanelAdmin(i))) return eph("⛔ Das Admin-Panel dürfen nur **Admins** benutzen.");
   const t = await F.currentCup();
   later(context, () => F.refreshAdminPanel());
@@ -151,7 +152,7 @@ async function adminPanelAction(i, context, cfg, act) {
       return background(i, context, async () => {
         const { purgeExcept } = await import("../cup/cleanup.mjs");
         let n = 0;
-        for (const c of list) n += await purgeExcept(c, keep).catch(() => 0);
+        for (const c of list) n += await purgeExcept(c, keep, `🧹 Kanäle säubern von <@${uidOf(i)}>`).catch(() => 0);
         return `🧹 Fertig: **${n}** Nachrichten in **${list.length}** Kanälen gelöscht.${keep.length ? ` (${keep.length} aktuelle Cup-Nachrichten behalten)` : ""}`;
       });
     }

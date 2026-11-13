@@ -76,6 +76,7 @@ async function giveAutoRoles(guildId, userId, roles) {
     const res = await fetch(`${API}/guilds/${guildId}/members/${userId}/roles/${r.id}`, { method: 'PUT', headers: { ...auth(), 'X-Audit-Log-Reason': encodeURIComponent('Automatisch beim Beitritt') } });
     if (res.ok) given.push(r.name);
   }
+  if (wanted.length) await require('./audit').audit(`👋 Beitritt <@${userId}> → Rollen: ${given.length ? given.map((n) => `**${n}**`).join(', ') : '❌ keine (Rechte prüfen)'}`, guildId);
   return given;
 }
 

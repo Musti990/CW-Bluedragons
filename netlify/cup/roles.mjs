@@ -24,6 +24,14 @@ const backoff = (tries) => Math.min(15000 * 2 ** tries, 5 * 60000); // 15 s, 30 
  * - Fehlgeschlagene Änderungen (z. B. Discord-Rate-Limit) werden später erneut versucht, nicht sofort verworfen.
  * - Pro Person bleibt die Reihenfolge erhalten: eine spätere Änderung wartet, bis die frühere durch ist.
  */
+const LOG = [];
+async function flushLog() {
+  if (!LOG.length) return;
+  const lines = LOG.splice(0);
+  const { audit } = await import("./audit.mjs");
+  for (let i = 0; i < lines.length; i += 25) await audit(`🎭 **Rollen** (${lines.length})\n${lines.slice(i, i + 25).join("\n")}`);
+}
+
 export async function processQueue(budgetMs = 8000) {
   const deadline = Date.now() + budgetMs;
   let done = 0;
@@ -38,8 +46,8 @@ export async function processQueue(budgetMs = 8000) {
     }
     if (!op) break;
     let ok = true;
-    for (const r of op.add) if (!(await addRole(op.u, r, op.why))) ok = false;
-    for (const r of op.rem) if (!(await removeRole(op.u, r, op.why))) ok = false;
+    for (const r of op.add) { const a = await addRole(op.u, r, op.why); if (!a) ok = false; LOG.push(`${a ? "➕" : "❌➕"} <@${op.u}> <@&${r}> · ${op.why || ""}`); }
+    for (const r of op.rem) { const a = await removeRole(op.u, r, op.why); if (!a) ok = false; LOG.push(`${a ? "➖" : "❌➖"} <@${op.u}> <@&${r}> · ${op.why || ""}`); }
     await mutate(KEY, (list) => {
       const i = list.findIndex((x) => x.id === op.id);
       if (i < 0) return;
@@ -50,5 +58,6 @@ export async function processQueue(budgetMs = 8000) {
     }, { initial: [] });
     done++;
   }
+  await flushLog();
   return done;
 }

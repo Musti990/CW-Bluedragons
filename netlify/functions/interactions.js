@@ -531,11 +531,13 @@ function buildNick({ base, tag, HP, NP }) {
 }
 
 async function setNick(guildId, userId, nick) {
-  return fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`, {
+  const res = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`, {
     method: 'PATCH',
     headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ nick }),
   });
+  await require('./lib/audit').audit(`${res.ok ? '✏️' : '❌✏️'} Name von <@${userId}> → **${nick || '(zurückgesetzt)'}**`, guildId);
+  return res;
 }
 
 function buildRoleComponents() {
@@ -628,6 +630,7 @@ async function handleRoleButton(interaction) {
     { method, headers: authHeader }
   );
 
+  await require('./lib/audit').audit(`${res.ok ? (hasRole ? '➖' : '➕') : '❌'} <@${userId}> ${hasRole ? 'entfernt' : 'nimmt'} Rolle **${role.name}** (Rollenauswahl)`, guildId);
   if (!res.ok) {
     return json(200, {
       type: 4,
@@ -1223,6 +1226,7 @@ async function handleTicketButton(interaction) {
     { type: 1, components: [{ type: 2, style: 2, label: 'Ticket schließen', emoji: { name: '🔒' }, custom_id: `ticket:close:${applicantId}` }] },
   ];
 
+  await require('./lib/audit').audit(`🎫 Ticket von <@${applicantId}>: **${({ accept: 'angenommen', reject: 'abgelehnt', close: 'geschlossen' })[action] || action}** von <@${interaction.member?.user?.id}>`, guildId);
   if (action === 'reject') {
     const dmOk = await require('./lib/ticket-core').sendRejectDm(applicantId).catch(() => false);
     embed.color = 0xda373c;
