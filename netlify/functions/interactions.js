@@ -1609,10 +1609,14 @@ async function handlePanelAction(interaction) {
     await st.setJSON(`draft-${interaction.member.user.id}`, draft);
     return json(200, { type: 7, data: {
       content: `**${draft.anonym ? '🕵️ Anonyme Umfrage' : '📅 Event'}: ${draft.titel}**\nIn welchen Kanal soll ${draft.anonym ? 'die Umfrage' : 'das Event'}?`,
-      components: [{ type: 1, components: [{ type: 8, custom_id: 'bdp:ev_ch', placeholder: 'Kanal auswählen…', channel_types: [0, 5], min_values: 1, max_values: 1, default_values: [{ id: draft.channelId, type: 'channel' }] }] }],
+      // Ohne Vorauswahl – sonst lässt sich der vorausgewählte Kanal nicht bestätigen. Dafür ein „Hier posten“-Button.
+      components: [
+        { type: 1, components: [{ type: 2, style: 3, label: 'Hier posten', emoji: { name: '✅' }, custom_id: 'bdp:ev_here' }] },
+        { type: 1, components: [{ type: 8, custom_id: 'bdp:ev_ch', placeholder: '…oder anderen Kanal wählen', channel_types: [0, 5], min_values: 1, max_values: 1 }] },
+      ],
     } });
   }
-  if (id === 'bdp:ev_ch') {
+  if (id === 'bdp:ev_ch' || id === 'bdp:ev_here') {
     const st = evStore();
     const draft = await st.get(`draft-${interaction.member.user.id}`, { type: 'json' });
     if (!draft) return json(200, { type: 7, data: { content: 'Der Entwurf ist abgelaufen – bitte neu starten.', components: [] } });
@@ -1656,22 +1660,26 @@ async function handlePanelAction(interaction) {
     const { parseGames: parse } = require('./lib/schedule');
     const fs = parse(modalValue(interaction, 'fs')), games = parse(modalValue(interaction, 'spiele'));
     if (!fs.length && !games.length) return ephemeral('❌ Bitte mindestens ein Spiel eintragen (Freundschaftsspiel oder Liga/Cup).');
-    const draft = { team, datum, treffen: treffen.replace('.', ':'), fs, wettbewerb: modalValue(interaction, 'wettbewerb') || 'Liga / Cup', games };
+    const draft = { team, datum, treffen: treffen.replace('.', ':'), fs, wettbewerb: modalValue(interaction, 'wettbewerb') || 'Liga / Cup', games, here: interaction.channel_id };
     await lineupStore().setJSON(`spdraft-${interaction.member.user.id}`, draft);
     return ephemeral(`**🗓️ Spielplan ${datum}** · ${fs.length + games.length} ${fs.length + games.length === 1 ? 'Spiel' : 'Spiele'}\nIn welchen Kanal posten?`, {
-      components: [{ type: 1, components: [{ type: 8, custom_id: 'bdp:sp_ch', placeholder: 'Kanal auswählen…', channel_types: [0, 5], min_values: 1, max_values: 1, default_values: [{ id: interaction.channel_id, type: 'channel' }] }] }],
+      components: [
+        { type: 1, components: [{ type: 2, style: 3, label: 'Hier posten', emoji: { name: '✅' }, custom_id: 'bdp:sp_here' }] },
+        { type: 1, components: [{ type: 8, custom_id: 'bdp:sp_ch', placeholder: '…oder anderen Kanal wählen', channel_types: [0, 5], min_values: 1, max_values: 1 }] },
+      ],
     });
   }
-  if (id === 'bdp:sp_ch') {
+  if (id === 'bdp:sp_ch' || id === 'bdp:sp_here') {
     const st = lineupStore();
     const d = await st.get(`spdraft-${interaction.member.user.id}`, { type: 'json' });
     if (!d) return json(200, { type: 7, data: { content: 'Der Entwurf ist abgelaufen – bitte neu starten.', components: [] } });
+    const chId = interaction.data.values?.[0] || d.here || interaction.channel_id;
     const S = require('./lib/schedule');
     const sid = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-    await S.store().setJSON(`sched-${sid}`, { id: sid, guildId: interaction.guild_id, channelId: interaction.data.values?.[0], team: d.team, teamLabel: KADER_TEAMS[d.team]?.label || 'CW BlueDragons', datum: d.datum, treffen: d.treffen, kick: parseKickoff(d.treffen, d.datum), fs: d.fs, wettbewerb: d.wettbewerb, games: d.games, messageId: null, lastChange: null });
+    await S.store().setJSON(`sched-${sid}`, { id: sid, guildId: interaction.guild_id, channelId: chId, team: d.team, teamLabel: KADER_TEAMS[d.team]?.label || 'CW BlueDragons', datum: d.datum, treffen: d.treffen, kick: parseKickoff(d.treffen, d.datum), fs: d.fs, wettbewerb: d.wettbewerb, games: d.games, messageId: null, lastChange: null });
     await st.delete(`spdraft-${interaction.member.user.id}`);
     await S.requestRender(sid);
-    return json(200, { type: 7, data: { content: `✅ Spielplan für **${d.datum}** wird in <#${interaction.data.values?.[0]}> gepostet – das Bild erscheint in ein paar Sekunden.`, components: [] } });
+    return json(200, { type: 7, data: { content: `✅ Spielplan für **${d.datum}** wird in <#${chId}> gepostet – das Bild erscheint in ein paar Sekunden.`, components: [] } });
   }
 
   if (id.startsWith('bdp:lu:')) {

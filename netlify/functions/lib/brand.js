@@ -11,7 +11,8 @@ const PRESETS = {
   dynastie: {
     name: 'Esports Dynastie', a: 'ESPORTS', b: 'DYNASTIE', small: 'WE ARE', s1: 'THE', s2: 'DYNASTY', long: 'WE ARE THE DYNASTY', wm: 'ED',
     // Blau → Lila, Gold bleibt Gold
-    colors: { '#2f7bff': '#8b5cf6', '#1f6bff': '#7c3aed', '#8fc2ff': '#c4b5fd', '#1240b8': '#4c1d95', '#1d3a8a': '#3b1a7a', '#1a2650': '#26164a', '#0d1530': '#140c2c', '#0a1128': '#0e0820', '#111a3a': '#1b1036', '#2a3f7a': '#4a2f7a' },
+    // Farben wie im Logo: Neon-Lila + Silber auf Schwarz (Blau → Lila, Gold-Akzente → helles Lila)
+    colors: { '#2f7bff': '#a855f7', '#1f6bff': '#9333ea', '#8fc2ff': '#e9d5ff', '#1240b8': '#581c87', '#1d3a8a': '#4c1d95', '#1a2650': '#1f1033', '#0d1530': '#120a1f', '#0a1128': '#0b0614', '#111a3a': '#180c2b', '#2a3f7a': '#5b2a8a', '#f2c14e': '#d8b4fe' },
     logoFile: 'brand-logo.png', credit: 'MustiBasha',
   },
 };

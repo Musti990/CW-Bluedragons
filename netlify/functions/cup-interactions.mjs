@@ -108,12 +108,16 @@ async function adminPanelAction(i, context, cfg, act) {
       if (!d) return eph("Der Entwurf ist abgelaufen – bitte nochmal „Neuer Cup“.");
       await set(`newcup:${uidOf(i)}`, { ...d, mode: i.data.values?.[0] || "auto" });
       // In welchen Kanal? (pro Kanal eine Anmeldeliste – so gehen mehrere Anmeldungen gleichzeitig)
-      return eph(`**🆕 ${V.esc(d.name)}** – in welchem Kanal soll die Anmeldeliste stehen?\n-# Pro Kanal gibt es eine Liste. Für eine zweite Anmeldung gleichzeitig einfach einen anderen Kanal wählen (z. B. „UT-Anmeldung-2“).`, { components: [{ type: 1, components: [{ type: 8, custom_id: "adm:neu_ch", channel_types: [0], placeholder: "Kanal wählen…", ...(cfg.channels.signup ? { default_values: [{ id: cfg.channels.signup, type: "channel" }] } : {}) }] }] });
+      // Keine Vorauswahl im Menü (sonst lässt sich der vorausgewählte Kanal nicht „anklicken“) – dafür ein eigener Button
+      return eph(`**🆕 ${V.esc(d.name)}** – in welchem Kanal soll die Anmeldeliste stehen?\n-# Pro Kanal gibt es eine Liste. Für eine zweite Anmeldung gleichzeitig einfach einen anderen Kanal wählen (z. B. „UT-Anmeldung-2“).`, { components: [
+        ...(cfg.channels.signup ? [{ type: 1, components: [{ type: 2, style: 3, label: "Im normalen Anmelde-Kanal", emoji: { name: "✅" }, custom_id: "adm:neu_chdef" }] }] : []),
+        { type: 1, components: [{ type: 8, custom_id: "adm:neu_ch", channel_types: [0], placeholder: "…oder anderen Kanal wählen" }] },
+      ] });
     }
-    case "neu_ch": {
+    case "neu_ch": case "neu_chdef": {
       const d = await get(`newcup:${uidOf(i)}`);
       if (!d) return eph("Der Entwurf ist abgelaufen – bitte nochmal „Neuer Cup“.");
-      const ch = i.data.values?.[0] || cfg.channels.signup || i.channel_id;
+      const ch = (act === "neu_ch" && i.data.values?.[0]) || cfg.channels.signup || i.channel_id;
       return manualCup({ ...i, channel_id: ch, type: 2, data: { name: "ut-turnier", options: [{ name: "name", value: d.name }, { name: "anpfiff", value: d.anpfiff }, { name: "modus", value: d.mode || "auto" }] } }, context);
     }
     case "edit":
